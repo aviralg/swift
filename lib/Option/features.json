@@ -50,6 +50,9 @@
     },
     {
        "name": "Isystem"
+    },
+    {
+      "name": "experimental-perf-assistance"
     }
   ]
 }

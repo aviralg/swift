@@ -3626,6 +3626,11 @@ public:
     }
 
     TypeChecker::checkObjCImplementation(FD);
+
+    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance))
+      evaluateOrDefault(Ctx.evaluator,
+                        SPACheckFunctionReturnType{FD},
+                        {});
   }
 
   void visitModuleDecl(ModuleDecl *) { }

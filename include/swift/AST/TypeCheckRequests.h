@@ -4967,6 +4967,25 @@ public:
   bool isCached() const { return true; }
 };
 
+/// Swift Performance Assistant: check for functions which return array and
+/// dictionary type values
+class SPACheckFunctionReturnType
+: public SimpleRequest<SPACheckFunctionReturnType,
+                       evaluator::SideEffect(FuncDecl *FD),
+                       RequestFlags::Cached> {
+public:
+using SimpleRequest::SimpleRequest;
+
+private:
+friend SimpleRequest;
+
+evaluator::SideEffect
+evaluate(Evaluator &evaluator, FuncDecl *FD) const;
+
+public:
+bool isCached() const { return true; }
+};
+
 /// Check @cdecl enums for compatibility with C.
 class TypeCheckCDeclEnumRequest
     : public SimpleRequest<TypeCheckCDeclEnumRequest,

@@ -8887,5 +8887,13 @@ ERROR(invalid_redecl_of_file_isolation,none,
 NOTE(invalid_redecl_of_file_isolation_prev,none,
      "default isolation was previously declared here", ())
 
+//===----------------------------------------------------------------------===//
+// MARK: Swift Performance Assistance diagnostics
+//===----------------------------------------------------------------------===//
+
+GROUPED_ERROR(spa_function_returns_array,SPAFunctionReturnType,none,
+              "Performance Assistant Issue: %0 returns a%select{ dictionary|n array}1, leading to implicit copies. "
+              "Consider using an 'inout' parameter instead.", (const FuncDecl *, bool))
+
 #define UNDEFINE_DIAGNOSTIC_MACROS
 #include "DefineDiagnosticMacros.h"

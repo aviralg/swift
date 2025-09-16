@@ -2595,23 +2595,28 @@ static bool ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
   Opts.SuppressWarnings |= Args.hasArg(OPT_suppress_warnings);
   Opts.SuppressRemarks |= Args.hasArg(OPT_suppress_remarks);
   for (const Arg *arg : Args.filtered(OPT_warning_treating_Group)) {
-    Opts.WarningsAsErrorsRules.push_back([&] {
+    Opts.WarningTreatmentRules.push_back([&] {
       switch (arg->getOption().getID()) {
       case OPT_warnings_as_errors:
-        return WarningAsErrorRule(WarningAsErrorRule::Action::Enable);
+        return WarningTreatmentRule(WarningTreatmentRule::Action::AsError);
       case OPT_no_warnings_as_errors:
-        return WarningAsErrorRule(WarningAsErrorRule::Action::Disable);
+        return WarningTreatmentRule(WarningTreatmentRule::Action::AsWarning);
       case OPT_Werror:
-        return WarningAsErrorRule(WarningAsErrorRule::Action::Enable,
-                                  arg->getValue());
+        return WarningTreatmentRule(WarningTreatmentRule::Action::AsError,
+                                    arg->getValue());
       case OPT_Wwarning:
-        return WarningAsErrorRule(WarningAsErrorRule::Action::Disable,
-                                  arg->getValue());
+        return WarningTreatmentRule(WarningTreatmentRule::Action::AsWarning,
+                                    arg->getValue());
+      // ACTODO
+      case OPT_Wsuppress:
+          return WarningTreatmentRule(WarningTreatmentRule::Action::Suppress,
+                                      arg->getValue());
       default:
         llvm_unreachable("unhandled warning as error option");
       }
     }());
   }
+
   if (Args.hasArg(OPT_debug_diagnostic_names)) {
     Opts.PrintDiagnosticNames = PrintDiagnosticNamesMode::Identifier;
   }
@@ -2656,8 +2661,8 @@ static bool ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
     }
   }
   assert(!(Opts.SuppressWarnings &&
-           WarningAsErrorRule::hasConflictsWithSuppressWarnings(
-               Opts.WarningsAsErrorsRules)) &&
+           WarningTreatmentRule::hasConflictsWithSuppressWarnings(
+               Opts.WarningTreatmentRules)) &&
          "conflicting arguments; should have been caught by driver");
 
   return false;
@@ -2676,7 +2681,7 @@ static void configureDiagnosticEngine(
   if (Options.SuppressRemarks) {
     Diagnostics.setSuppressRemarks(true);
   }
-  Diagnostics.setWarningsAsErrorsRules(Options.WarningsAsErrorsRules);
+  Diagnostics.setWarningTreatmentRules(Options.WarningTreatmentRules);
   Diagnostics.setPrintDiagnosticNamesMode(Options.PrintDiagnosticNames);
 
   std::string docsPath = Options.DiagnosticDocumentationPath;

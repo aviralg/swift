@@ -920,6 +920,12 @@ def Wwarning : Separate<["-"], "Wwarning">,
   MetaVarName<"<diagnostic_group>">,
   HelpText<"Treat this warning group as warning">;
 
+def Wsuppress : Separate<["-"], "Wsuppress">,
+  Group<warning_treating_Group>,
+  Flags<[FrontendOption, HelpHidden]>,
+  MetaVarName<"<diagnostic_group>">,
+  HelpText<"Suppress this warning group">;
+
 def suppress_remarks : Flag<["-"], "suppress-remarks">,
   Flags<[FrontendOption]>,
   HelpText<"Suppress all remarks">;

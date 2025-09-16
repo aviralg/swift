@@ -33,8 +33,7 @@ evaluator::SideEffect SPACheckFunctionReturnType::evaluate(Evaluator &evaluator,
     FD->getASTContext()
         .Diags
         .diagnose(FD->getLoc(), diag::spa_function_returns_array, FD,
-                  returnType->isArray())
-        .limitBehaviorIf(false, DiagnosticBehavior::Warning);
+                  returnType->isArray());
   }
   return {};
 }

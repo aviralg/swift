@@ -67,8 +67,8 @@ TEST(DiagnosticGroups, TargetAll) {
   testCase(
       [](DiagnosticEngine &diags) {
         const std::vector rules = {
-            WarningAsErrorRule(WarningAsErrorRule::Action::Enable)};
-        diags.setWarningsAsErrorsRules(rules);
+            WarningTreatmentRule(WarningTreatmentRule::Action::AsError)};
+        diags.setWarningTreatmentRules(rules);
 
         TestDiagnostic diagnostic(
             diag::warn_unsupported_module_interface_library_evolution.ID,
@@ -100,9 +100,9 @@ TEST(DiagnosticGroups, OverrideBehaviorLimitations) {
 
     testCase(
         [&diagnostic](DiagnosticEngine &diags) {
-          const std::vector rules = {WarningAsErrorRule(
-              WarningAsErrorRule::Action::Enable, "DeprecatedDeclaration")};
-          diags.setWarningsAsErrorsRules(rules);
+          const std::vector rules = {WarningTreatmentRule(
+              WarningTreatmentRule::Action::AsError, "DeprecatedDeclaration")};
+          diags.setWarningTreatmentRules(rules);
 
           diags.diagnose(SourceLoc(), diagnostic);
           diags.diagnose(SourceLoc(), diagnostic)
@@ -133,9 +133,9 @@ TEST(DiagnosticGroups, OverrideBehaviorLimitations) {
 
     testCase(
         [&diagnostic](DiagnosticEngine &diags) {
-          const std::vector rules = {WarningAsErrorRule(
-              WarningAsErrorRule::Action::Enable, "DeprecatedDeclaration")};
-          diags.setWarningsAsErrorsRules(rules);
+          const std::vector rules = {WarningTreatmentRule(
+              WarningTreatmentRule::Action::AsError, "DeprecatedDeclaration")};
+          diags.setWarningTreatmentRules(rules);
 
           diags.diagnose(SourceLoc(), diagnostic)
               .limitBehaviorUntilSwiftVersion(DiagnosticBehavior::Warning, 99);

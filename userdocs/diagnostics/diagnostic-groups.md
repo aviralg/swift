@@ -13,6 +13,7 @@ control the behavior of warnings in a more precise manner:
 - `-Werror <group>` - upgrades warnings in the specified group to errors
 - `-Wwarning <group>` - indicates that warnings in the specified group should remain warnings, even
   if they were previously upgraded to errors
+- `-Wsuppress <group>` - fully suppresses warnings in the specified group
 
 As a concrete example, to upgrade deprecated declaration warnings to errors:
 ```sh

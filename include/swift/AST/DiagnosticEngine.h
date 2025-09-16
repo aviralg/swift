@@ -25,7 +25,7 @@
 #include "swift/Basic/PrintDiagnosticNamesMode.h"
 #include "swift/Basic/Statistic.h"
 #include "swift/Basic/Version.h"
-#include "swift/Basic/WarningAsErrorRule.h"
+#include "swift/Basic/WarningTreatmentRule.h"
 #include "swift/Localization/LocalizationFormat.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -907,12 +907,12 @@ namespace swift {
     }
 
     /// Apply rules specifing what warnings should or shouldn't be treated as
-    /// errors. For group rules the string is a group name defined by
-    /// DiagnosticGroups.def
+    /// errors or be suppressed. For group rules the string is a group name
+    /// defined by DiagnosticGroups.def.
     /// Rules are applied in order they appear in the vector.
     /// In case the vector contains rules affecting the same diagnostic ID
     /// the last rule wins.
-    void setWarningsAsErrorsRules(const std::vector<WarningAsErrorRule> &rules);
+    void setWarningTreatmentRules(const std::vector<WarningTreatmentRule> &rules);
 
     /// Whether to print diagnostic names after their messages
     void setPrintDiagnosticNamesMode(PrintDiagnosticNamesMode val) {

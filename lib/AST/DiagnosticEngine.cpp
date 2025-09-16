@@ -82,6 +82,11 @@ enum class DiagnosticOptions {
   /// by various warning options (-Wwarning, -Werror). This only makes sense
   /// for warnings.
   DefaultIgnore,
+
+  /// This warning diagnostic should be escalated to an error by default,
+  /// but can be downgraded accordingly with -Wwarning. This only makes sense
+  /// for warnings
+  DefaultEscalate
 };
 struct StoredDiagnosticInfo {
   DiagnosticKind kind : 2;
@@ -91,16 +96,19 @@ struct StoredDiagnosticInfo {
   bool isDeprecation : 1;
   bool isNoUsage : 1;
   bool defaultIgnore : 1;
+  bool defaultEscalate : 1;
   DiagGroupID groupID;
 
   constexpr StoredDiagnosticInfo(DiagnosticKind k, bool firstBadToken,
                                  bool fatal, bool isAPIDigesterBreakage,
                                  bool deprecation, bool noUsage,
-                                 bool defaultIgnore, DiagGroupID groupID)
+                                 bool defaultIgnore, bool defaultEscalate,
+                                 DiagGroupID groupID)
       : kind(k), pointsToFirstBadToken(firstBadToken), isFatal(fatal),
         isAPIDigesterBreakage(isAPIDigesterBreakage),
         isDeprecation(deprecation), isNoUsage(noUsage),
-        defaultIgnore(defaultIgnore), groupID(groupID) {}
+        defaultIgnore(defaultIgnore), defaultEscalate(defaultEscalate),
+        groupID(groupID) {}
   constexpr StoredDiagnosticInfo(DiagnosticKind k, DiagnosticOptions opts,
                                  DiagGroupID groupID)
       : StoredDiagnosticInfo(k,
@@ -110,6 +118,7 @@ struct StoredDiagnosticInfo {
                              opts == DiagnosticOptions::Deprecation,
                              opts == DiagnosticOptions::NoUsage,
                              opts == DiagnosticOptions::DefaultIgnore,
+                             opts == DiagnosticOptions::DefaultEscalate,
                              groupID) {}
 };
 } // end anonymous namespace
@@ -162,6 +171,21 @@ DiagnosticState::DiagnosticState() {
 
   // Initialize warningsAsErrors to default
   warningsAsErrors.resize(DiagGroupsCount);
+
+  // Initialize warning diagnostics which default to
+  // being emitted as errors (DefaultEscalate)
+  for (const auto &info : storedDiagnosticInfos) {
+    if (info.defaultEscalate) {
+      
+      if (info.groupID != DiagGroupID::no_group) {
+        getDiagGroupInfoByID(info.groupID).traverseDepthFirst([&](auto group) {
+          warningsAsErrors[(unsigned)info.groupID] = true;
+          for (DiagID diagID : group.diagnostics)
+            ignoredDiagnostics[(unsigned)diagID] = false;
+        });
+      }
+    }
+  }
 }
 
 Diagnostic::Diagnostic(DiagID ID)
@@ -567,38 +591,44 @@ bool DiagnosticEngine::finishProcessing() {
   return hadError;
 }
 
-void DiagnosticEngine::setWarningsAsErrorsRules(
-    const std::vector<WarningAsErrorRule> &rules) {
+void DiagnosticEngine::setWarningTreatmentRules(
+    const std::vector<WarningTreatmentRule> &rules) {
   std::vector<std::string> unknownGroups;
   for (const auto &rule : rules) {
-    bool isEnabled = [&] {
+    bool treatAsError = [&] {
       switch (rule.getAction()) {
-      case WarningAsErrorRule::Action::Enable:
+      case WarningTreatmentRule::Action::AsError:
         return true;
-      case WarningAsErrorRule::Action::Disable:
+      case WarningTreatmentRule::Action::AsWarning:
+      case WarningTreatmentRule::Action::Suppress:
         return false;
       }
     }();
     auto target = rule.getTarget();
-    if (auto group = std::get_if<WarningAsErrorRule::TargetGroup>(&target)) {
+    if (auto group = std::get_if<WarningTreatmentRule::TargetGroup>(&target)) {
       auto name = std::string_view(group->name);
       // Validate the group name and set the new behavior for each diagnostic
       // associated with the group and all its subgroups.
       if (auto groupID = getDiagGroupIDByName(name);
           groupID && *groupID != DiagGroupID::no_group) {
         getDiagGroupInfoByID(*groupID).traverseDepthFirst([&](auto group) {
-          state.setWarningsAsErrorsForDiagGroupID(*groupID, isEnabled);
-          for (DiagID diagID : group.diagnostics) {
-            state.setIgnoredDiagnostic(diagID, false);
+          if (rule.getAction() == WarningTreatmentRule::Action::Suppress) {
+            for (DiagID diagID : group.diagnostics)
+              state.setIgnoredDiagnostic(diagID, true);
+          }
+          else {
+            state.setWarningsAsErrorsForDiagGroupID(*groupID, treatAsError);
+            for (DiagID diagID : group.diagnostics)
+              state.setIgnoredDiagnostic(diagID, false);
           }
         });
       } else {
         unknownGroups.push_back(std::string(name));
       }
-    } else if (std::holds_alternative<WarningAsErrorRule::TargetAll>(target)) {
-      state.setAllWarningsAsErrors(isEnabled);
+    } else if (std::holds_alternative<WarningTreatmentRule::TargetAll>(target)) {
+      state.setAllWarningsAsErrors(treatAsError);
     } else {
-      llvm_unreachable("unhandled WarningAsErrorRule::Target");
+      llvm_unreachable("unhandled WarningTreatmentRule::Target");
     }
   }
   for (const auto &unknownGroup : unknownGroups) {

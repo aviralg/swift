@@ -1,8 +1,8 @@
-//===--- WarningAsErrorRule.h -----------------------------------*- C++ -*-===//
+//===--- WarningTreatmentRule.h -----------------------------------*- C++ -*-===//
 //
 // This source file is part of the Swift.org open source project
 //
-// Copyright (c) 2014 - 2024 Apple Inc. and the Swift project authors
+// Copyright (c) 2014 - 2025 Apple Inc. and the Swift project authors
 // Licensed under Apache License v2.0 with Runtime Library Exception
 //
 // See https://swift.org/LICENSE.txt for license information
@@ -10,8 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef SWIFT_BASIC_WARNINGASERRORRULE_H
-#define SWIFT_BASIC_WARNINGASERRORRULE_H
+#ifndef SWIFT_BASIC_WARNINGTREATMENTRULE_H
+#define SWIFT_BASIC_WARNINGTREATMENTRULE_H
 
 #include "llvm/Support/ErrorHandling.h"
 #include <string>
@@ -21,9 +21,9 @@
 namespace swift {
 
 /// Describes a rule how to treat a warning or all warnings.
-class WarningAsErrorRule {
+class WarningTreatmentRule {
 public:
-  enum class Action { Disable, Enable };
+  enum class Action { AsWarning, AsError, Suppress };
   struct TargetAll {};
   struct TargetGroup {
     std::string name;
@@ -31,9 +31,9 @@ public:
   using Target = std::variant<TargetAll, TargetGroup>;
 
   /// Init as a rule targeting all diagnostic groups
-  WarningAsErrorRule(Action action) : action(action), target(TargetAll()) {}
+  WarningTreatmentRule(Action action) : action(action), target(TargetAll()) {}
   /// Init as a rule targeting a specific diagnostic group
-  WarningAsErrorRule(Action action, const std::string &group)
+  WarningTreatmentRule(Action action, const std::string &group)
       : action(action), target(TargetGroup{group}) {}
 
   Action getAction() const { return action; }
@@ -41,25 +41,29 @@ public:
   Target getTarget() const { return target; }
 
   static bool hasConflictsWithSuppressWarnings(
-      const std::vector<WarningAsErrorRule> &rules) {
+      const std::vector<WarningTreatmentRule> &rules) {
     bool warningsAsErrorsAllEnabled = false;
     for (const auto &rule : rules) {
       const auto target = rule.getTarget();
       if (std::holds_alternative<TargetAll>(target)) {
         // Only `-warnings-as-errors` conflicts with `-suppress-warnings`
         switch (rule.getAction()) {
-        case WarningAsErrorRule::Action::Enable:
+        case Action::AsError:
           warningsAsErrorsAllEnabled = true;
           break;
-        case WarningAsErrorRule::Action::Disable:
+        case Action::AsWarning:
           warningsAsErrorsAllEnabled = false;
+          break;
+        case Action::Suppress:
+          llvm_unreachable("cannot suppress all warnings");
           break;
         }
       } else if (std::holds_alternative<TargetGroup>(target)) {
         // Both `-Wwarning` and `-Werror` conflict with `-suppress-warnings`
-        return true;
+        if (rule.getAction() == Action::AsError || rule.getAction() == Action::AsWarning)
+          return true;
       } else {
-        llvm_unreachable("unhandled WarningAsErrorRule::Target");
+        llvm_unreachable("unhandled WarningTreatmentRule::Target");
       }
     }
     return warningsAsErrorsAllEnabled;
@@ -72,4 +76,4 @@ private:
 
 } // end namespace swift
 
-#endif // SWIFT_BASIC_WARNINGASERRORRULE_H
+#endif // SWIFT_BASIC_WARNINGTREATMENTRULE_H

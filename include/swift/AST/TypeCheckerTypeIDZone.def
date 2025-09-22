@@ -664,3 +664,7 @@ SWIFT_REQUEST(TypeChecker, AvailabilityDomainForDeclRequest,
 SWIFT_REQUEST(TypeChecker, SPACheckFunctionReturnType,
               evaluator::SideEffect(FunctionDecl *),
               Cached, NoLocationInfo)
+
+SWIFT_REQUEST(TypeChecker, SPACheckClassDefinition,
+              evaluator::SideEffect(ModuleDecl *),
+              Cached, NoLocationInfo)

@@ -40,3 +40,4 @@ presented specially within your IDE of choice. See below for the full list of th
 - <doc:mutable-global-variable>
 - <doc:existential-member-access-limitations>
 - <doc:spa-function-return-type>
+- <doc:spa-class-definition>

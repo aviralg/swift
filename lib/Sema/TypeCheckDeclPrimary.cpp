@@ -3633,7 +3633,12 @@ public:
                         {});
   }
 
-  void visitModuleDecl(ModuleDecl *) { }
+  void visitModuleDecl(ModuleDecl *MD) {
+    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance))
+      evaluateOrDefault(Ctx.evaluator,
+                        SPACheckClassDefinition{MD},
+                        {});
+  }
 
   void visitEnumCaseDecl(EnumCaseDecl *ECD) {
     // The type-checker doesn't care about how these are grouped.

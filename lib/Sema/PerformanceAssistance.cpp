@@ -38,3 +38,22 @@ evaluator::SideEffect SPACheckFunctionReturnType::evaluate(Evaluator &evaluator,
   }
   return {};
 }
+
+evaluator::SideEffect SPACheckClassDefinition::evaluate(Evaluator &evaluator,
+                                                        ModuleDecl *MD) const {
+  if (auto *attr = MD->getAttrs().getAttribute<SPAOverrideAttr>())
+    return {};
+
+  SmallVector<TypeDecl*> decls;
+  MD->getLocalTypeDecls(decls);
+
+  for (const TypeDecl* decl: decls) {
+    if (const ClassDecl* classDecl = dyn_cast<ClassDecl>(decl)) {
+      classDecl->getASTContext()
+	.Diags
+	.diagnose(classDecl->getLoc(), diag::spa_modules_defines_class, classDecl, MD)
+    }
+  }
+
+  return {};
+}

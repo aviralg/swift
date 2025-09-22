@@ -392,6 +392,8 @@ public:
   void visitPostfixAttr(PostfixAttr *attr) { checkOperatorAttribute(attr); }
   void visitPrefixAttr(PrefixAttr *attr) { checkOperatorAttribute(attr); }
 
+  void visitSPAOverrideAttr(SPAOverrideAttr *attr);
+
   void visitSpecializedAttr(SpecializedAttr *attr);
   void visitSpecializeAttr(SpecializeAttr *attr);
   void visitAbstractSpecializeAttr(AbstractSpecializeAttr *attr);
@@ -2820,6 +2822,13 @@ void AttributeChecker::visitConstValAttr(ConstValAttr *attr) {
       attr->setInvalid();
       return;
     }
+  }
+}
+
+void AttributeChecker::visitSPAOverrideAttr(SPAOverrideAttr *attr) {
+  auto *VD = dyn_cast<VarDecl>(D);
+  if (VD) {
+    // ACTODO
   }
 }
 

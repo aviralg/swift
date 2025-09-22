@@ -1297,6 +1297,11 @@ bool DeclAttribute::printImpl(ASTPrinter &Printer, const PrintOptions &Options,
     Printer << "(\"" << cast<SectionAttr>(this)->Name << "\")";
     break;
 
+  case DeclAttrKind::SPAOverride:
+    Printer.printAttrName("@spaOverride");
+    Printer << "(\"" << cast<SectionAttr>(this)->Name << "\")";
+    break;
+
   case DeclAttrKind::ObjC: {
     Printer.printAttrName("@objc");
     llvm::SmallString<32> scratch;
@@ -1946,6 +1951,8 @@ StringRef DeclAttribute::getAttrName() const {
     return "_expose";
   case DeclAttrKind::Section:
     return "_section";
+  case DeclAttrKind::SPAOverride:
+    return "spaOverride";
   case DeclAttrKind::Documentation:
     return "_documentation";
   case DeclAttrKind::Nonisolated:

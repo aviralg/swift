@@ -2253,6 +2253,12 @@ namespace decls_block {
     BCBlob      // _section
   >;
 
+  using SPAOverrideDeclAttrLayout = BCRecordLayout<
+    SPAOverride_DECL_ATTR,
+    BCFixed<1>, // implicit flag
+    BCBlob      // name
+  >;
+
   using CDeclDeclAttrLayout = BCRecordLayout<
     CDecl_DECL_ATTR,
     BCFixed<1>, // implicit flag

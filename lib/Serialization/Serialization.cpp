@@ -3440,6 +3440,15 @@ class Serializer::DeclSerializer : public DeclVisitor<DeclSerializer> {
       return;
     }
 
+    case DeclAttrKind::SPAOverride: {
+      auto *theAttr = cast<SPAOverrideAttr>(DA);
+      auto abbrCode = S.DeclTypeAbbrCodes[SPAOverrideDeclAttrLayout::Code];
+      SPAOverrideDeclAttrLayout::emitRecord(S.Out, S.ScratchRecord, abbrCode,
+                                            theAttr->isImplicit(),
+                                            theAttr->Name);
+      return;
+    }
+
     case DeclAttrKind::Documentation: {
       auto *theAttr = cast<DocumentationAttr>(DA);
       auto abbrCode = S.DeclTypeAbbrCodes[DocumentationDeclAttrLayout::Code];

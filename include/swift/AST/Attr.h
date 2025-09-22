@@ -730,6 +730,32 @@ public:
   }
 };
 
+/// Defines the @spaOverride attribute.
+class SPAOverrideAttr : public DeclAttribute {
+public:
+  SPAOverrideAttr(StringRef Name, SourceLoc AtLoc, SourceRange Range, bool Implicit)
+      : DeclAttribute(DeclAttrKind::SPAOverride, AtLoc, Range, Implicit),
+        Name(Name) {}
+
+  SPAOverrideAttr(StringRef Name, bool Implicit)
+    : SPAOverrideAttr(Name, SourceLoc(), SourceRange(), Implicit) {}
+
+  /// The override string.
+  const StringRef Name;
+
+  static bool classof(const DeclAttribute *DA) {
+    return DA->getKind() == DeclAttrKind::SPAOverride;
+  }
+
+  SPAOverrideAttr *clone(ASTContext &ctx) const {
+    return new (ctx) SPAOverrideAttr(Name, AtLoc, Range, isImplicit());
+  }
+
+  bool isEquivalent(const SPAOverrideAttr *other, Decl *attachedTo) const {
+    return Name == other->Name;
+  }
+};
+
 /// Defines the @_cdecl attribute.
 class CDeclAttr : public DeclAttribute {
 public:

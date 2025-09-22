@@ -899,7 +899,13 @@ DECL_ATTR(specialized, Specialized,
   AllowMultipleAttributes | LongAttribute | UserInaccessible | ABIStableToAdd | ABIStableToRemove | APIStableToAdd | APIStableToRemove | ForbiddenInABIAttr,
   172)
 
-LAST_DECL_ATTR(Specialized)
+DECL_ATTR(spaOverride, SPAOverride,
+  OnFunc,
+  AllowMultipleAttributes | ABIStableToAdd | ABIStableToRemove | APIStableToAdd | APIStableToRemove | ForbiddenInABIAttr,
+  173)
+DECL_ATTR_FEATURE_REQUIREMENT(SPAOverride, SwiftPerformanceAssistance)
+
+LAST_DECL_ATTR(SPAOverride)
 
 #undef DECL_ATTR_ALIAS
 #undef CONTEXTUAL_DECL_ATTR_ALIAS

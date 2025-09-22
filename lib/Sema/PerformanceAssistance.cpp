@@ -26,7 +26,8 @@ using namespace swift;
 
 evaluator::SideEffect SPACheckFunctionReturnType::evaluate(Evaluator &evaluator,
                                                            FuncDecl *FD) const {
-  // ACTODO: Check if this function has an override for this check
+  if (auto *attr = FD->getAttrs().getAttribute<SPAOverrideAttr>())
+    return {};
 
   auto returnType = FD->getResultInterfaceType();
   if (returnType->isArray() || returnType->isDictionary()) {

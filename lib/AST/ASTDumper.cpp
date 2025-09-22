@@ -5468,6 +5468,12 @@ public:
     visitAbstractSpecializeAttr(Attr, label);
   }
 
+  void visitSPAOverrideAttr(SPAOverrideAttr *Attr, Label label) {
+    printCommon(Attr, "spa_override_attr", label);
+    printFieldQuoted(Attr->Name, Label::always("name"));
+    printFoot();
+  }
+
   void visitAbstractSpecializeAttr(AbstractSpecializeAttr *Attr, Label label) {
     printCommon(Attr, Attr->isPublic() ? "specialized_attr" :
                   "specialize_attr", label);

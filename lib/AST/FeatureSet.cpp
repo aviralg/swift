@@ -127,7 +127,6 @@ UNINTERESTING_FEATURE(NonisolatedNonsendingByDefault)
 UNINTERESTING_FEATURE(KeyPathWithMethodMembers)
 UNINTERESTING_FEATURE(ImportMacroAliases)
 UNINTERESTING_FEATURE(NoExplicitNonIsolated)
-UNINTERESTING_FEATURE(SwiftPerformanceAssistance)
 
 // TODO: Return true for inlinable function bodies with module selectors in them
 UNINTERESTING_FEATURE(ModuleSelector)
@@ -311,6 +310,10 @@ static bool usesFeatureConcurrencySyntaxSugar(Decl *decl) {
 static bool usesFeatureCompileTimeValues(Decl *decl) {
   return decl->getAttrs().hasAttribute<ConstValAttr>() ||
          decl->getAttrs().hasAttribute<ConstInitializedAttr>();
+}
+
+static bool usesFeatureSwiftPerformanceAssistance(Decl *decl) {
+  return decl->getAttrs().hasAttribute<SPAOverrideAttr>();
 }
 
 static bool usesFeatureCompileTimeValuesPreview(Decl *decl) {

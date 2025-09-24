@@ -666,5 +666,16 @@ SWIFT_REQUEST(TypeChecker, SPACheckFunctionReturnType,
               Cached, NoLocationInfo)
 
 SWIFT_REQUEST(TypeChecker, SPACheckClassDefinition,
-              evaluator::SideEffect(ModuleDecl *),
+              evaluator::SideEffect(ClassDecl *),
+              Cached, NoLocationInfo)
+
+SWIFT_REQUEST(TypeChecker, SPACheckFunctionExistentialAny,
+              evaluator::SideEffect(FunctionDecl *), Cached, NoLocationInfo)
+
+SWIFT_REQUEST(TypeChecker, SPACheckVariableExistentialAny,
+              evaluator::SideEffect(VarDecl *),
+              Cached, NoLocationInfo)
+
+SWIFT_REQUEST(TypeChecker, SPACheckEnumExistentialAny,
+              evaluator::SideEffect(EnumElementDecl *),
               Cached, NoLocationInfo)

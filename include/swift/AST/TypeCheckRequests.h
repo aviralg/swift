@@ -4989,7 +4989,7 @@ bool isCached() const { return true; }
 /// Swift Performance Assistant: check for class definition in modules
 class SPACheckClassDefinition
 : public SimpleRequest<SPACheckClassDefinition,
-                       evaluator::SideEffect(ModuleDecl *MD),
+                       evaluator::SideEffect(ClassDecl *CD),
                        RequestFlags::Cached> {
 public:
 using SimpleRequest::SimpleRequest;
@@ -4998,10 +4998,65 @@ private:
 friend SimpleRequest;
 
 evaluator::SideEffect
-evaluate(Evaluator &evaluator, ModuleDecl *MD) const;
+evaluate(Evaluator &evaluator, ClassDecl *CD) const;
 
 public:
 bool isCached() const { return true; }
+};
+
+/// Swift Performance Assistant: check for class definition in modules
+class SPACheckFunctionExistentialAny
+: public SimpleRequest<SPACheckFunctionExistentialAny,
+                       evaluator::SideEffect(FuncDecl *FD),
+                       RequestFlags::Cached> {
+public:
+using SimpleRequest::SimpleRequest;
+
+private:
+friend SimpleRequest;
+
+evaluator::SideEffect
+evaluate(Evaluator &evaluator, FuncDecl *FD) const;
+
+public:
+bool isCached() const { return true; }
+};
+
+
+/// Swift Performance Assistant: check for class definition in modules
+class SPACheckVariableExistentialAny
+  : public SimpleRequest<SPACheckVariableExistentialAny,
+			 evaluator::SideEffect(VarDecl *VD),
+			 RequestFlags::Cached> {
+  public:
+  using SimpleRequest::SimpleRequest;
+
+  private:
+  friend SimpleRequest;
+
+  evaluator::SideEffect evaluate(Evaluator &evaluator,
+				 VarDecl *VD) const;
+
+  public:
+  bool isCached() const { return true; }
+};
+
+/// Swift Performance Assistant: check for class definition in modules
+class SPACheckEnumExistentialAny
+  : public SimpleRequest<SPACheckEnumExistentialAny,
+			 evaluator::SideEffect(EnumElementDecl *EED),
+			 RequestFlags::Cached> {
+  public:
+  using SimpleRequest::SimpleRequest;
+
+  private:
+  friend SimpleRequest;
+
+  evaluator::SideEffect evaluate(Evaluator &evaluator,
+				 EnumElementDecl *EED) const;
+
+  public:
+  bool isCached() const { return true; }
 };
 
 /// Check @cdecl enums for compatibility with C.

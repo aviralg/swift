@@ -79,6 +79,7 @@ GROUP(WeakMutability, "weak-mutability")
 
 GROUP(SPAFunctionReturnType, "spa-function-return-type")
 GROUP(SPAClassDefinition, "spa-class-definition")
+GROUP(SPAExistentialType, "spa-existential-type")
 
 #define UNDEFINE_DIAGNOSTIC_GROUPS_MACROS
 #include "swift/AST/DefineDiagnosticGroupsMacros.h"

@@ -10217,6 +10217,10 @@ inline SourceLoc extractNearestSourceLoc(const AbstractFunctionDecl *func) {
   return extractNearestSourceLoc(static_cast<const Decl *>(func));
 }
 
+inline SourceLoc extractNearestSourceLoc(const EnumElementDecl *enumElement) {
+  return enumElement->getLoc();
+}
+
 } // end namespace swift
 
 #endif

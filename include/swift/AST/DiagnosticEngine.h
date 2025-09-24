@@ -48,6 +48,9 @@ namespace swift {
   class FuncDecl;
   class SourceManager;
   class SourceFile;
+  class ParamDecl;
+  class ImplicitlyUnwrappedOptionalType;
+  class EnumElementDecl;
 
   /// Enumeration describing all of possible diagnostics.
   ///

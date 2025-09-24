@@ -8899,5 +8899,37 @@ GROUPED_WARNING(spa_module_defines_class,SPAClassDefinition,DefaultEscalate,
                 "Performance Assistant Issue: class %0 defined in module, leading to heap allocation and reference counting when used. "
                 "Consider using a 'struct' instead.", (const ClassDecl *))
 
+GROUPED_WARNING(spa_function_param_is_existential,SPAExistentialType,DefaultEscalate,
+                "Performance Assistant Issue: %0 declares an existential parameter %1, leading to heap allocation, reference counting, and dynamic dispatch. "
+                "Consider using generic constraints or concrete types instead.", (const FuncDecl *, const ParamDecl*))
+
+GROUPED_WARNING(
+  spa_function_returns_existential, SPAExistentialType, DefaultEscalate,
+  "Performance Assistant Issue: %0 returns an existential, leading to heap "
+  "allocation, reference counting, and dynamic dispatch. "
+  "Consider using generic constraints or concrete types instead.",
+  (const FuncDecl *))
+
+GROUPED_WARNING(spa_var_is_existential, SPAExistentialType, DefaultEscalate,
+		"Performance Assistant Issue: %0 uses an existential, leading to heap "
+		"allocation, reference counting, and dynamic dispatch. "
+		"Consider using generic constraints or concrete types instead.",
+		(const VarDecl *))
+
+GROUPED_WARNING(spa_enum_case_indexed_has_existential, SPAExistentialType,
+                DefaultEscalate,
+                "Performance Assistant Issue: Associated value at position %0 of case %1 "
+                "in enum %2 uses an existential, leading to heap "
+                "allocation, reference counting, and dynamic dispatch. "
+                "Consider using generic constraints or concrete types instead.",
+                (int, const EnumElementDecl *, const EnumDecl *))
+  
+GROUPED_WARNING(spa_enum_case_named_has_existential, SPAExistentialType, DefaultEscalate,
+		"Performance Assistant Issue: Associated value %0 of case %1 in enum %2 uses an existential, leading to heap "
+		"allocation, reference counting, and dynamic dispatch. "
+		"Consider using generic constraints or concrete types instead.",
+		(const ParamDecl* , const EnumElementDecl* , const EnumDecl *))
+
+
 #define UNDEFINE_DIAGNOSTIC_MACROS
 #include "DefineDiagnosticMacros.h"

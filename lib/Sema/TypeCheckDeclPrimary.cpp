@@ -2569,6 +2569,13 @@ public:
             });
       }
     }
+
+    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance)) {
+      if (VD->hasStorage()) {
+        evaluateOrDefault(Ctx.evaluator, SPACheckVariableExistentialAny{VD},
+                          {});
+      }
+    }
   }
 
   bool checkBoundInOutVarDecl(PatternBindingDecl *pbd, unsigned patternIndex,
@@ -3444,6 +3451,12 @@ public:
     maybeDiagnoseClassWithoutInitializers(CD);
 
     diagnoseInverseOnClass(CD);
+
+    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance)) {
+      evaluateOrDefault(Ctx.evaluator,
+                        SPACheckClassDefinition{CD},
+                        {});
+    }
   }
 
   void visitProtocolDecl(ProtocolDecl *PD) {
@@ -3627,17 +3640,24 @@ public:
 
     TypeChecker::checkObjCImplementation(FD);
 
-    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance))
-      evaluateOrDefault(Ctx.evaluator,
-                        SPACheckFunctionReturnType{FD},
-                        {});
+    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance)) {
+      bool isUserDefined = !FD->isImplicit();
+      if (isUserDefined) {
+        evaluateOrDefault(Ctx.evaluator, SPACheckFunctionReturnType{FD}, {});
+      }
+    }
+
+    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance)) {
+      // We only want to issue diagnostics against user defined functions
+      bool isUserDefined = !FD->isImplicit();
+      if (isUserDefined) {
+        evaluateOrDefault(Ctx.evaluator, SPACheckFunctionExistentialAny{FD},
+                          {});
+      }
+    }
   }
 
-  void visitModuleDecl(ModuleDecl *MD) {
-    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance))
-      evaluateOrDefault(Ctx.evaluator,
-                        SPACheckClassDefinition{MD},
-                        {});
+  void visitModuleDecl(ModuleDecl *){ 
   }
 
   void visitEnumCaseDecl(EnumCaseDecl *ECD) {
@@ -3676,6 +3696,11 @@ public:
     }
 
     checkAccessControl(EED);
+
+    if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance)) {
+        evaluateOrDefault(Ctx.evaluator, SPACheckEnumExistentialAny{EED},
+                          {});
+    }
   }
 
   /// The extended type must be '(repeat each Element)' or a generic

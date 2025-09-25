@@ -22,6 +22,7 @@
 #include "swift/AST/Evaluator.h"
 #include "swift/AST/TypeCheckRequests.h"
 #include "swift/AST/TypeVisitor.h"
+#include "swift/AST/TypeRepr.h"
 
 using namespace swift;
 
@@ -251,12 +252,13 @@ SPACheckEnumExistentialAny::evaluate(Evaluator &evaluator,
       const Type type = PD->getInterfaceType()->getCanonicalType();
       if (hasAnyExistentialType(type)) {
         DiagnosticEngine &Diags = PD->getASTContext().Diags;
+	
 	// If there is no label name, report the index
         if (PD->getArgumentName().empty()) {
-	  Diags.diagnose(PD->getLoc(), diag::spa_enum_case_indexed_has_existential, index, EED, ED);
+	  Diags.diagnose(PD->getTypeRepr()->getLoc(), diag::spa_enum_case_indexed_has_existential, index, EED, ED);
         }
         else {
-	  Diags.diagnose(PD->getLoc(), diag::spa_enum_case_named_has_existential, PD, EED, ED);
+	  Diags.diagnose(PD, diag::spa_enum_case_named_has_existential, PD, EED, ED);
 	}
       }
     }

@@ -51,6 +51,7 @@ namespace swift {
   class ParamDecl;
   class ImplicitlyUnwrappedOptionalType;
   class EnumElementDecl;
+  class TypeRepr;
 
   /// Enumeration describing all of possible diagnostics.
   ///

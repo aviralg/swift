@@ -233,7 +233,7 @@ evaluator::SideEffect SPACheckVariableExistentialAny::evaluate(Evaluator &evalua
     VD->getASTContext()
       .Diags
       .diagnose(VD->getLoc(), diag::spa_var_is_existential, VD);
-  }	
+  }
 
   return {};
 }

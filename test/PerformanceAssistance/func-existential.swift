@@ -1,4 +1,6 @@
 
+
+
 protocol Vehicle {
     func travel(to destination: String)
 }
@@ -32,6 +34,16 @@ typealias AnyVehicle = any Vehicle
 
 func asVehicle5(using vehicles: [AnyVehicle]) -> Int {
   return vehicles.count
+}
+
+func testMe() {
+  let inner = { (_ vehicles: [AnyVehicle]) -> Int in
+    return vehicles.count
+  }
+
+  let inner2 = { (_ vehicles: [AnyVehicle]) -> AnyVehicle in
+    return vehicles[0]
+  }
 }
 
 struct Hello {
@@ -79,6 +91,10 @@ struct Test100 {
   var f : () -> any Vehicle = { () -> any Vehicle in return Car() }
 }
 
+func serve(customer personProvider: @autoclosure () -> AnyVehicle) {
+    print("Now serving \(personProvider())!")
+}
+
 enum Barcode {
     case upc(Int, any Vehicle, Int, Int)
     case qrCode(String)
@@ -88,6 +104,14 @@ enum Barcode2 {
     case upc(a: Int, b: Int, c: any Vehicle, d: Int)
     case qrCode(e: String)
 }
+
+struct Point {
+    var x = 0.0, y = 0.0
+}
+struct Size {
+    var width = 0.0, height = 0.0
+}
+
 /*
 struct Hello {
   

@@ -5004,24 +5004,41 @@ public:
 bool isCached() const { return true; }
 };
 
-/// Swift Performance Assistant: check for class definition in modules
+/// Swift Performance Assistant: check for existential any in function type
+/// declaration
 class SPACheckFunctionExistentialAny
-: public SimpleRequest<SPACheckFunctionExistentialAny,
-                       evaluator::SideEffect(FuncDecl *FD),
-                       RequestFlags::Cached> {
+    : public SimpleRequest<SPACheckFunctionExistentialAny,
+                           evaluator::SideEffect(FuncDecl *FD),
+                           RequestFlags::Cached> {
 public:
-using SimpleRequest::SimpleRequest;
+  using SimpleRequest::SimpleRequest;
 
 private:
-friend SimpleRequest;
+  friend SimpleRequest;
 
-evaluator::SideEffect
-evaluate(Evaluator &evaluator, FuncDecl *FD) const;
+  evaluator::SideEffect evaluate(Evaluator &evaluator, FuncDecl *FD) const;
 
 public:
-bool isCached() const { return true; }
+  bool isCached() const { return true; }
 };
 
+/// Swift Performance Assistant: check for existential any in closure type
+/// declaration
+class SPACheckClosureExistentialAny
+    : public SimpleRequest<SPACheckClosureExistentialAny,
+                           evaluator::SideEffect(ClosureExpr *CE),
+                           RequestFlags::Cached> {
+public:
+  using SimpleRequest::SimpleRequest;
+
+private:
+  friend SimpleRequest;
+
+  evaluator::SideEffect evaluate(Evaluator &evaluator, ClosureExpr *CE) const;
+
+public:
+  bool isCached() const { return true; }
+};
 
 /// Swift Performance Assistant: check for class definition in modules
 class SPACheckVariableExistentialAny

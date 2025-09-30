@@ -177,63 +177,146 @@ static bool hasAnyExistentialType(Type type) {
   //   return hasAnyExistentialType(type->getGenericArgs()[0]);
 }
 
+static void checkFunctionParametersForExistentialAny(const ParameterList *PL,
+                                                     StringRef Kind) {
 
-evaluator::SideEffect SPACheckFunctionExistentialAny::evaluate(Evaluator &evaluator,
-                                                               FuncDecl *FD) const {
+  // TODO - handle autoclosure type
+  for (const ParamDecl *PD : *PL) {
+    Type paramType =
+        PD->getDeclContext()->mapTypeIntoContext(PD->getInterfaceType());
+
+    if (PD->isVariadic()) {
+      // Extract underlying type from VariadicSequenceType
+      const VariadicSequenceType *variadicSeqType =
+          dyn_cast<VariadicSequenceType>(paramType);
+      assert(variadicSeqType &&
+             "Variadic parameter should have a VariadicSequenceType");
+      paramType = variadicSeqType->getBaseType();
+    }
+
+    // assert(T);
+
+    const bool isExistential = hasAnyExistentialType(paramType);
+
+    if (!isExistential)
+      continue;
+
+    const TypeRepr *TR = PD->getTypeRepr();
+
+    // If explicitly specified, choose the type declaration for diagnostic
+    // location.
+    SourceLoc SL = TR ? TR->getLoc() : PD->getLoc();
+
+    PD->getASTContext().Diags.diagnose(SL, diag::spa_func_param_has_existential,
+                                       Kind);
+  }
+}
+
+// TODO - autoclosure errors point to ->
+// TODO - (any Person)? error points to ?
+// Closure return type is nullptr, leads to crashes, so we don't check it for
+// existential any
+static void checkFunctionResultForExistentialAny(Type ResultType,
+                                                 SourceLoc DefinitionLoc,
+                                                 const TypeRepr *TR,
+                                                 DiagnosticEngine &DE,
+                                                 StringRef Kind) {
+  const bool isExistential = hasAnyExistentialType(ResultType);
+
+  if (!isExistential)
+    return;
+
+  SourceLoc SL = (TR != nullptr) ? TR->getLoc() : DefinitionLoc;
+
+  DE.diagnose(SL, diag::spa_func_result_has_existential, Kind);
+}
+
+StringRef getFunctionKind(const FuncDecl *FD) {
+  // Check for specific declaration types
+  if (isa<ConstructorDecl>(FD)) {
+    return "Constructor";
+  }
+
+  if (auto *accessor = dyn_cast<AccessorDecl>(FD)) {
+    return accessor->isObservingAccessor() ? "Observer" : "Accessor";
+  }
+
+  if (FD->hasImplicitSelfDecl()) {
+    if (FD->isStatic()) {
+      return "Static method";
+    }
+    return "Method";
+  }
+
+  return "Function";
+}
+
+evaluator::SideEffect
+SPACheckFunctionExistentialAny::evaluate(Evaluator &evaluator,
+                                         FuncDecl *FD) const {
   if (auto *attr = FD->getAttrs().getAttribute<SPAOverrideAttr>())
     return {};
 
-  const ParameterList* params = FD->getParameterList();
-  for (const ParamDecl* PD: *params) {
+  StringRef Kind = getFunctionKind(FD);
 
-    // Check if parameter is variadic first
-    if (PD->isVariadic()) {
-      // Get the parameter type
-      Type paramType = PD->getInterfaceType();
+  checkFunctionParametersForExistentialAny(FD->getParameterList(), Kind);
 
-      // Extract underlying type from VariadicSequenceType
-      if (auto *variadicType = dyn_cast<VariadicSequenceType>(paramType)) {
-	Type underlyingType = variadicType->getBaseType();
-	if (hasAnyExistentialType(underlyingType) /*underlyingType->isAnyExistentialType()*/) {
-	  FD->getASTContext()
-	    .Diags
-	    .diagnose(FD->getLoc(), diag::spa_function_param_is_existential, FD, PD);
-	}	
-      }
-    }
-    else {
-      const Type paramType = PD->getInterfaceType();
-      const bool isExistential = hasAnyExistentialType(paramType); //paramType->isAnyExistentialType();
-      if (isExistential) {
-	FD->getASTContext()
-	  .Diags
-	  .diagnose(FD->getLoc(), diag::spa_function_param_is_existential, FD, PD);
-      }
-    }
-  }
+  Type resultType = FD->mapTypeIntoContext(FD->getResultInterfaceType());
+  checkFunctionResultForExistentialAny(resultType, FD->getLoc(),
+                                       FD->getResultTypeRepr(),
+                                       FD->getASTContext().Diags, Kind);
 
-  const Type resultType = FD->getResultInterfaceType();
-  if (hasAnyExistentialType(resultType)) {
-    FD->getASTContext()
-      .Diags
-      .diagnose(FD->getLoc(), diag::spa_function_returns_existential, FD);
-  }
-    
   return {};
 }
 
-evaluator::SideEffect SPACheckVariableExistentialAny::evaluate(Evaluator &evaluator,
-							       VarDecl *VD) const {
+evaluator::SideEffect
+SPACheckClosureExistentialAny::evaluate(Evaluator &evaluator,
+                                        ClosureExpr *CE) const {
+  if (auto *attr = CE->getAttrs().getAttribute<SPAOverrideAttr>())
+    return {};
+
+  StringRef Kind = "Closure";
+
+  checkFunctionParametersForExistentialAny(CE->getParameters(), Kind);
+
+  Type resultType = CE->mapTypeIntoContext(CE->getResultType());
+  checkFunctionResultForExistentialAny(resultType, CE->getLoc(),
+                                       CE->getExplicitResultTypeRepr(),
+                                       CE->getASTContext().Diags, Kind);
+
+  return {};
+}
+
+evaluator::SideEffect
+SPACheckVariableExistentialAny::evaluate(Evaluator &evaluator,
+                                         VarDecl *VD) const {
+
   if (auto *attr = VD->getAttrs().getAttribute<SPAOverrideAttr>())
     return {};
 
-  Type type = VD->getInterfaceType()->getCanonicalType();
-  
-  if (hasAnyExistentialType(type) /*underlyingType->isAnyExistentialType()*/) {
-    VD->getASTContext()
-      .Diags
-      .diagnose(VD->getLoc(), diag::spa_var_is_existential, VD);
+  Type type = VD->getInterfaceType();
+
+  if (!hasAnyExistentialType(type))
+    return {};
+
+  const DeclContext *DC = VD->getDeclContext();
+
+  const bool isProperty = (DC->getSelfClassDecl() != nullptr) ||
+                          (DC->getSelfEnumDecl() != nullptr) ||
+                          (DC->getSelfStructDecl() != nullptr) ||
+                          (DC->getSelfProtocolDecl() != nullptr) ||
+                          (DC->getExtendedProtocolDecl() != nullptr);
+
+  const StringRef kind = isProperty ? "Property" : "Variable";
+
+  SourceLoc SL = VD->getLoc();
+
+  if (const TypeRepr *TR = VD->getTypeReprOrParentPatternTypeRepr()) {
+    SL = TR->getLoc();
   }
+
+  VD->getASTContext().Diags.diagnose(SL, diag::spa_var_has_existential, kind,
+                                     VD);
 
   return {};
 }

@@ -672,6 +672,9 @@ SWIFT_REQUEST(TypeChecker, SPACheckClassDefinition,
 SWIFT_REQUEST(TypeChecker, SPACheckFunctionExistentialAny,
               evaluator::SideEffect(FunctionDecl *), Cached, NoLocationInfo)
 
+SWIFT_REQUEST(TypeChecker, SPACheckClosureExistentialAny,
+              evaluator::SideEffect(ClosureExpr *), Cached, NoLocationInfo)
+
 SWIFT_REQUEST(TypeChecker, SPACheckVariableExistentialAny,
               evaluator::SideEffect(VarDecl *),
               Cached, NoLocationInfo)

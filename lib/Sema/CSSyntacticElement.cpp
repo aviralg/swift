@@ -17,8 +17,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "MiscDiagnostics.h"
-#include "TypeChecker.h"
 #include "TypeCheckAvailability.h"
+#include "TypeChecker.h"
+#include "swift/AST/TypeCheckRequests.h"
 #include "swift/Basic/Assertions.h"
 #include "swift/Sema/ConstraintSystem.h"
 #include "swift/Sema/IDETypeChecking.h"
@@ -2614,7 +2615,15 @@ bool ConstraintSystem::applySolution(AnyFunctionRef fn,
     return builderRewriter.apply();
   }
   assert(closure && "Can only get here with a closure at the moment");
-  return applySolutionToBody(closure, rewriter);
+  const bool hasError = applySolutionToBody(closure, rewriter);
+
+  if (getASTContext().LangOpts.hasFeature(
+          Feature::SwiftPerformanceAssistance)) {
+    evaluateOrDefault(getASTContext().evaluator,
+                      SPACheckClosureExistentialAny{closure}, {});
+  }
+
+  return hasError;
 }
 
 bool ConstraintSystem::applySolutionToBody(

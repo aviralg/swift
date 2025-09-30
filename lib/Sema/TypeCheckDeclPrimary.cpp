@@ -2807,6 +2807,23 @@ public:
         }
       }
     }
+
+    // if (Ctx.LangOpts.hasFeature(Feature::SwiftPerformanceAssistance)) {
+    //   SmallVector<VarDecl *, 4> varDecls;
+
+    //   for (unsigned i = 0; i < PBD->getNumPatternEntries(); ++i) {
+    // 	Pattern *pattern = PBD->getPattern(i);
+    //     pattern->collectVariables(varDecls);
+
+    //     for (VarDecl *varDecl : varDecls) {
+    // 	  if (varDecl->hasStorage()) {
+    // 	    evaluateOrDefault(Ctx.evaluator,
+    // SPACheckVariableExistentialAny{varDecl},
+    // 			      {});
+    // 	  }
+    // 	}
+    //   }
+    // }
   }
 
   void visitSubscriptDecl(SubscriptDecl *SD) {

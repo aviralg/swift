@@ -16,59 +16,52 @@
 
 /* Variable Declarations */
 
-protocol Person {
-  var name: String { get set }
+
+// MARK: - Base Protocols for Testing Existential Any
+
+protocol TestProtocol {
+  func testMethod()
 }
 
-struct Scientist : Person {
-  var name: String
-  
-  init() {
-    self.name = "Dr. FNU LNU"
-  }
+protocol AnotherProtocol {
+  var value: Int { get }
 }
 
-struct Director : Person {
-  var name: String
-  
-  init() {
-    self.name = "Mr. Movie Maker"
-  }
+struct ConcreteStruct: TestProtocol {
+  func testMethod() {}
 }
 
-protocol Animal {
-  var species: String { get set }
+class ConcreteClass: TestProtocol, AnotherProtocol {
+  let value = 42
+  func testMethod() {}
 }
 
-struct Tiger: Animal {
-  var species: String
-
-  init() {
-    self.species = "Tiger"
-  }
+enum ConcreteEnum: TestProtocol {
+case test
+  func testMethod() {}
 }
 
-struct Panda: Animal {
-  var species: String
+func functionTestCases() {
+  // 1. var + function + concrete + explicit + direct existential
+  var funcVarExplicit: any TestProtocol = ConcreteStruct()
 
-  init() {
-    self.species = "Panda"
-  }
+  // 2. let + function + concrete + explicit + direct existential
+  let funcLetExplicit: any TestProtocol = ConcreteClass()
 }
 
-// Local variables
-func testVariableDeclarations() {
-  let person: any Person = Scientist()
-  var animal: any Animal = Tiger()
+class classTestCases {
+  // 1. var + function + concrete + explicit + direct existential
+  var classVar: any TestProtocol = ConcreteStruct()
+
+  // 2. let + function + concrete + explicit + direct existential
+  let classLet: any TestProtocol = ConcreteClass()
 }
 
-// Property declarations
-class Zoo {
-  var animals: [any Animal] = [Tiger(), Panda()]
-  let director: any Person = Director()
+struct structTestCases {
+  // 1. var + function + concrete + explicit + direct existential
+  var structVar: any TestProtocol = ConcreteStruct()
+
+  // 2. let + function + concrete + explicit + direct existential
+  let structLet: any TestProtocol = ConcreteClass()
 }
 
-// Static/class properties
-struct Home {
-  static let owner: any Person = Scientist()
-}

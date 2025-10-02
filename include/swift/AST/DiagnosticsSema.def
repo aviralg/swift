@@ -8946,5 +8946,21 @@ GROUPED_WARNING(perf_hint_closure_returns_array,PerformanceHints,DefaultIgnore,
                 "Performance: closure returns a%select{ dictionary|n array}0, leading to implicit copies. "
                 "Consider using an 'inout' parameter instead.", (bool))
 
+GROUPED_WARNING(perf_hint_param_has_existential,PerformanceHints,DefaultIgnore,
+                "Performance: %0 expects an existential, leading to heap allocation, reference counting, "
+                "and dynamic dispatch. Consider using generic constraints or concrete types instead.",
+                (const ParamDecl*))
+GROUPED_WARNING(perf_hint_func_returns_existential,PerformanceHints,DefaultIgnore,
+                "Performance: %0 returns an existential, leading to heap allocation, reference counting, "
+                "and dynamic dispatch. Consider using generic constraints or concrete types instead.",
+                (const FuncDecl*))
+GROUPED_WARNING(perf_hint_closure_returns_existential,PerformanceHints,DefaultIgnore,
+                "Performance: closure returns an existential, leading to heap allocation, reference counting, "
+                "and dynamic dispatch. Consider using generic constraints or concrete types instead.", ())
+GROUPED_WARNING(perf_hint_var_has_existential,PerformanceHints,DefaultIgnore,
+                "Performance: %0 has an existential, leading to heap allocation, reference counting, "
+                "and dynamic dispatch. Consider using generic constraints or concrete types instead.",
+                (const VarDecl *))
+
 #define UNDEFINE_DIAGNOSTIC_MACROS
 #include "DefineDiagnosticMacros.h"

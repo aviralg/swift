@@ -8970,6 +8970,11 @@ GROUPED_WARNING(perf_hint_typealias_uses_existential_any,ExistentialAnyType,Defa
                 "and dynamic dispatch. Consider using generic constraints or concrete types instead.",
                 (const TypeAliasDecl *))
 
+GROUPED_WARNING(perf_hint_operator_plus,OperatorAllocation,DefaultIgnore,
+                "Performance: '+' creates a new object for concatenation. "
+                "Consider using append(:) or += for in-place mutation.",
+                ())
+
 ERROR(unsafe_self_dependent_result_attr_on_invalid_decl,none,
       "invalid use of @_unsafeSelfDependentResult", ())
 

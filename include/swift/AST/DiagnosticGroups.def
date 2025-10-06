@@ -84,6 +84,8 @@ GROUP(ReturnTypeImplicitCopy, "return-type-implicit-copy")
 GROUP_LINK(PerformanceHints, ReturnTypeImplicitCopy)
 GROUP(ExistentialAnyType, "existential-any-type")
 GROUP_LINK(PerformanceHints, ExistentialAnyType)
+GROUP(OperatorAllocation, "operator-allocation")
+GROUP_LINK(PerformanceHints, OperatorAllocation)
 
 #define UNDEFINE_DIAGNOSTIC_GROUPS_MACROS
 #include "swift/AST/DefineDiagnosticGroupsMacros.h"

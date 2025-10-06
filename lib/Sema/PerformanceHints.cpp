@@ -45,7 +45,9 @@ bool swift::performanceHintDiagnosticsEnabled(ASTContext &ctx) {
          !ctx.Diags.isIgnoredDiagnostic(
              diag::perf_hint_any_pattern_uses_existential_any.ID) ||
          !ctx.Diags.isIgnoredDiagnostic(
-             diag::perf_hint_typealias_uses_existential_any.ID);
+             diag::perf_hint_typealias_uses_existential_any.ID) ||
+         !ctx.Diags.isIgnoredDiagnostic(
+             diag::perf_hint_operator_plus.ID);
 }
 
 namespace {
@@ -149,6 +151,29 @@ public:
   }
 };
 
+void checkPlusOperator(const BinaryExpr* BE, DiagnosticEngine &Diags) {
+  auto *DSCE = dyn_cast<DotSyntaxCallExpr>(BE->getFn());
+  auto *DRE = dyn_cast<DeclRefExpr>(DSCE->getFn());
+  if (!DRE)
+    return;
+
+  const Identifier methodName = DRE->getDecl()->getBaseIdentifier();
+  if (!methodName.is("+"))
+    return;
+
+  // Get the base type (the type on which the method is called)
+  auto* MT = DSCE->getBase()->getType()->getAs<MetatypeType>();
+  if (!MT)
+      return;
+
+  Type T = MT->getInstanceType();
+  if (!T->isArray() && !T->isString())
+    return;
+
+  Diags.diagnose(DRE->getLoc(), diag::perf_hint_operator_plus);
+  return;
+}
+
 /// Produce performance hint diagnostics for a SourceFile.
 class PerformanceHintDiagnosticWalker final : public ASTWalker {
   ASTContext &Ctx;
@@ -190,6 +215,8 @@ public:
 
     if (auto Closure = dyn_cast<ClosureExpr>(E)) {
       CheckExistentialAny::inClosureReturnType(Closure, Ctx.Diags);
+    } else if (const BinaryExpr *BE = dyn_cast<BinaryExpr>(E)) {
+      checkPlusOperator(BE, Ctx.Diags);
     }
 
     return Action::Continue(E);

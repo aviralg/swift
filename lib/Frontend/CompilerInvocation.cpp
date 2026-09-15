@@ -2905,6 +2905,28 @@ static bool ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
     }
   }
 
+  if (const Arg *arg = Args.getLastArg(OPT_serialize_diagnostics_EQ)) {
+    StringRef contents = arg->getValue();
+    if (contents == "dia") {
+      Opts.SerializedDiagnosticsFormat =
+          DiagnosticOptions::SerializedFormat::LLVMBitcode;
+    } else if (contents == "sarif") {
+#if !SWIFT_BUILD_SARIF
+      // Reject the `=sarif` argument if the compiler is not built with SARIF
+      // support enabled.
+      Diags.diagnose(SourceLoc(),
+                     diag::error_serialize_diagnostics_sarif_unsupported_build);
+      return true;
+#endif
+      Opts.SerializedDiagnosticsFormat =
+          DiagnosticOptions::SerializedFormat::SARIF;
+    } else {
+      Diags.diagnose(SourceLoc(), diag::error_unsupported_option_argument,
+                     arg->getOption().getPrefixedName(), arg->getValue());
+      return true;
+    }
+  }
+
   for (const Arg *arg: Args.filtered(OPT_emit_macro_expansion_files)) {
     StringRef contents = arg->getValue();
     bool negated = contents.starts_with("no-");

@@ -162,7 +162,7 @@ std::string CompilerInvocation::getConstValuesFilePathForPrimary(
 std::string
 CompilerInvocation::getSerializedDiagnosticsPathForAtMostOnePrimary() const {
   return getPrimarySpecificPathsForAtMostOnePrimary()
-      .SupplementaryOutputs.SerializedDiagnosticsPath;
+      .SupplementaryOutputs.LLVMBitcodeDiagnosticsPath;
 }
 std::string CompilerInvocation::getTBDPathForWholeModule() const {
   assert(getFrontendOptions().InputsAndOutputs.isWholeModule() &&

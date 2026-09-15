@@ -130,6 +130,7 @@ extension DiagnosticSeverity {
   }
 }
 
+/// The diagnostics queued for a single rendering or serialization pass.
 struct QueuedDiagnostics {
   var grouped: GroupedDiagnostics = GroupedDiagnostics()
 
@@ -139,6 +140,24 @@ struct QueuedDiagnostics {
 
   /// The known source files
   var sourceFiles: [ExportedSourceFile] = []
+
+  /// Diagnostics raised without a source location.
+  ///
+  /// 'grouped' has no source to render these against, so it does not hold them,
+  /// but serialization has to account for them: dropping them would let a
+  /// failed compilation produce a log that looks clean. Only populated when
+  /// SARIF serialization is built, since nothing else reads them.
+  var unlocatedDiagnostics: [SimpleDiagnostic] = []
+
+  /// Record a diagnostic that has no source location.
+  ///
+  /// SARIF serialization is the only reader, and it is not always built, so
+  /// this records nothing when it is absent.
+  mutating func recordUnlocated(_ diagnostic: SimpleDiagnostic) {
+    #if SWIFT_BUILD_SARIF
+    unlocatedDiagnostics.append(diagnostic)
+    #endif
+  }
 }
 
 /// Create a grouped diagnostics structure in which we can add osou
@@ -165,7 +184,12 @@ public func destroyQueuedDiagnostics(
 }
 
 /// Diagnostic message used for thrown errors.
-fileprivate struct SimpleDiagnostic: DiagnosticMessage {
+struct SimpleDiagnostic: DiagnosticMessage {
+  /// The compiler's in-source name for this diagnostic, e.g.
+  /// "expression_unused_function". Kept as a field because 'MessageID' does not
+  /// let its parts be read back out.
+  let id: String
+
   let message: String
 
   let severity: DiagnosticSeverity
@@ -176,7 +200,7 @@ fileprivate struct SimpleDiagnostic: DiagnosticMessage {
   let categoryChain: [DiagnosticCategory]
 
   var diagnosticID: MessageID {
-    .init(domain: "SwiftCompiler", id: "SimpleDiagnostic")
+    .init(domain: "SwiftCompiler", id: id)
   }
 }
 
@@ -266,6 +290,8 @@ private func convertCategoryChain(
 }
 
 /// Add a new diagnostic to the queue.
+///
+/// 'diagnosticID' is the compiler's in-source name for the diagnostic.
 @_cdecl("swift_ASTGen_addQueuedDiagnostic")
 public func addQueuedDiagnostic(
   queuedDiagnosticsPtr: UnsafeMutableRawPointer,
@@ -273,6 +299,7 @@ public func addQueuedDiagnostic(
   text: BridgedStringRef,
   severity: swift.DiagnosticKind,
   loc: SourceLoc,
+  diagnosticID: BridgedStringRef,
   categoryChainPtr: UnsafePointer<BridgedDiagnosticCategoryEntry>?,
   numCategoryChainEntries: Int,
   highlightRangesPtr: UnsafePointer<CharSourceRange>?,
@@ -288,21 +315,35 @@ public func addQueuedDiagnostic(
   )
 
   guard let rawPosition = loc.raw else {
+    // A diagnostic raised without a source location, such as a failure to open
+    // an input file. There is nothing to render it against, so it is not added
+    // to 'grouped', but serialization still has to account for it: dropping it
+    // would let a failed compilation produce a log that looks clean.
+    queuedDiagnostics.pointee.recordUnlocated(
+      SimpleDiagnostic(
+        id: String(bridged: diagnosticID),
+        message: String(bridged: text),
+        severity: severity.asSeverity,
+        category: nil,
+        categoryChain: []
+      )
+    )
     return
   }
 
   // Find the source file that contains this location.
-  let sourceFile = queuedDiagnostics.pointee.sourceFiles.first { sf in
+  let sourceFileIndex = queuedDiagnostics.pointee.sourceFiles.firstIndex { sf in
     guard let baseAddress = sf.buffer.baseAddress else {
       return false
     }
 
     return rawPosition >= baseAddress && rawPosition <= baseAddress + sf.buffer.count
   }
-  guard let sourceFile = sourceFile else {
+  guard let sourceFileIndex = sourceFileIndex else {
     // FIXME: Hard to report an error here...
     return
   }
+  let sourceFile = queuedDiagnostics.pointee.sourceFiles[sourceFileIndex]
 
   let sourceFileBaseAddress = UnsafeRawPointer(sourceFile.buffer.baseAddress!)
   let sourceFileEndAddress = sourceFileBaseAddress + sourceFile.buffer.count
@@ -414,6 +455,7 @@ public func addQueuedDiagnostic(
     node: node,
     position: position,
     message: SimpleDiagnostic(
+      id: String(bridged: diagnosticID),
       message: String(bridged: text),
       severity: severity.asSeverity,
       category: category,
@@ -454,6 +496,8 @@ public func renderSingleDiagnostic(
 
   let renderedStr = formatter.formattedMessage(
     SimpleDiagnostic(
+      // This path only renders; nothing reads the identifier.
+      id: "SimpleDiagnostic",
       message: String(bridged: text),
       severity: severity.asSeverity,
       category: category,

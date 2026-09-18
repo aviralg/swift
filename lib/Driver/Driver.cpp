@@ -2597,7 +2597,8 @@ Job *Driver::buildJobsForAction(Compilation &C, const JobAction *JA,
 
   if (isa<CompileJobAction>(JA) || isa<GeneratePCHJobAction>(JA)) {
     // Choose the serialized diagnostics output path.
-    if (C.getArgs().hasArg(options::OPT_serialize_diagnostics))
+    if (C.getArgs().hasArg(options::OPT_serialize_diagnostics,
+                           options::OPT_serialize_diagnostics_EQ))
       chooseSerializedDiagnosticsPath(C, JA, OutputMap, workingDirectory,
                                       Output.get());
   }
@@ -2956,25 +2957,51 @@ void Driver::chooseModuleSummaryPath(Compilation &C,
                      /*requireArg=*/options::OPT_emit_module_summary);
 }
 
+/// The file type diagnostics from \p JA are serialized to, which depends on the
+/// format requested by -serialize-diagnostics=<format>.
+///
+/// A persistent PCH is the exception: its diagnostics file lives in the shared
+/// PCH output directory and is read by clients that expect the binary format,
+/// so it stays binary whatever the rest of the compilation uses. The
+/// corresponding frontend invocation overrides the format to match; see
+/// ToolChain::constructInvocation for GeneratePCHJobAction.
+static file_types::ID serializedDiagnosticsType(const llvm::opt::ArgList &Args,
+                                                const JobAction *JA) {
+  // A PCH's diagnostics file is read by clients that expect the binary format,
+  // so it stays binary whatever the rest of the compilation uses.
+  if (isa<GeneratePCHJobAction>(JA))
+    return file_types::TY_SerializedDiagnostics;
+
+  if (const Arg *A = Args.getLastArg(options::OPT_serialize_diagnostics_EQ))
+    if (StringRef(A->getValue()) == "sarif")
+      return file_types::TY_SARIFDiagnostics;
+  return file_types::TY_SerializedDiagnostics;
+}
+
 void Driver::chooseSerializedDiagnosticsPath(Compilation &C,
                                              const JobAction *JA,
                                              const TypeToPathMap *OutputMap,
                                              StringRef workingDirectory,
                                              CommandOutput *Output) const {
-  if (C.getArgs().hasArg(options::OPT_serialize_diagnostics)) {
+  if (C.getArgs().hasArg(options::OPT_serialize_diagnostics,
+                         options::OPT_serialize_diagnostics_EQ)) {
+    // One type decides both the output that is registered and the stale file
+    // that is removed below, so that the two cannot disagree.
+    const file_types::ID diagnosticsType =
+        serializedDiagnosticsType(C.getArgs(), JA);
+
     auto pchJA = dyn_cast<GeneratePCHJobAction>(JA);
     if (pchJA && pchJA->isPersistentPCH()) {
       addDiagFileOutputForPersistentPCHAction(C, pchJA, *Output, OutputMap,
                                               workingDirectory);
     } else {
-      addAuxiliaryOutput(C, *Output, file_types::TY_SerializedDiagnostics,
-                         OutputMap, workingDirectory);
+      addAuxiliaryOutput(C, *Output, diagnosticsType, OutputMap,
+                         workingDirectory);
     }
 
     // Remove any existing diagnostics files so that clients can detect their
     // presence to determine if a command was run.
-    StringRef OutputPath =
-        Output->getAnyOutputForType(file_types::TY_SerializedDiagnostics);
+    StringRef OutputPath = Output->getAnyOutputForType(diagnosticsType);
     if (llvm::sys::fs::is_regular_file(OutputPath))
       llvm::sys::fs::remove(OutputPath);
   }

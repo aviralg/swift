@@ -964,6 +964,14 @@ void ToolChain::JobContext::addFrontendSupplementaryOutputArguments(
                    file_types::TY_SerializedDiagnostics,
                    "-serialize-diagnostics-path");
 
+  // Only the file type matching the requested format has an output to pass
+  // along, so at most one of these two contributes an argument. The format goes
+  // with the path rather than to every frontend job, since the flag turns
+  // serialization on by itself.
+  if (addOutputsOfType(arguments, Output, Args, file_types::TY_SARIFDiagnostics,
+                       "-serialize-diagnostics-path"))
+    arguments.push_back("-serialize-diagnostics=sarif");
+
   if (addOutputsOfType(arguments, Output, Args, file_types::ID::TY_ClangHeader,
                        "-emit-objc-header-path")) {
     assert(OI.CompilerMode == OutputInfo::Mode::SingleCompile &&

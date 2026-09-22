@@ -121,12 +121,14 @@ private func registerSwiftPasses() {
   registerPass(tempRValueElimination, { tempRValueElimination.run($0) })
   registerPass(mandatoryTempRValueElimination, { mandatoryTempRValueElimination.run($0) })
   registerPass(tempLValueElimination, { tempLValueElimination.run($0) })
+  registerPass(mandatoryTempLValueElimination, { mandatoryTempLValueElimination.run($0) })
   registerPass(closureSpecialization, { closureSpecialization.run($0) })
   registerPass(autodiffClosureSpecialization, { autodiffClosureSpecialization.run($0) })
   registerPass(loopInvariantCodeMotionPass, { loopInvariantCodeMotionPass.run($0) })
   registerPass(killInvalidDebugValuesPass, { killInvalidDebugValuesPass.run($0) })
   registerPass(deadDebugVariableEliminationPass, { deadDebugVariableEliminationPass.run($0) })
   registerPass(packSpecialization, { packSpecialization.run($0) })
+  registerPass(trivialOwnershipElimination, { trivialOwnershipElimination.run($0) })
 
   // Instruction passes
   registerForSILCombine(BeginBorrowInst.self,      { run(BeginBorrowInst.self, $0) })
@@ -160,6 +162,7 @@ private func registerSwiftPasses() {
   registerForSILCombine(MoveValueInst.self,         { run(MoveValueInst.self, $0) })
   registerForSILCombine(OpenExistentialRefInst.self, { run(OpenExistentialRefInst.self, $0) })
   registerForSILCombine(PointerToAddressInst.self,  { run(PointerToAddressInst.self, $0) })
+  registerForSILCombine(RawPointerToRefInst.self,   { run(RawPointerToRefInst.self, $0) })
   registerForSILCombine(UncheckedEnumDataInst.self, { run(UncheckedEnumDataInst.self, $0) })
   registerForSILCombine(WitnessMethodInst.self,     { run(WitnessMethodInst.self, $0) })
   registerForSILCombine(UncheckedAddrCastInst.self, { run(UncheckedAddrCastInst.self, $0) })

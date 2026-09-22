@@ -110,7 +110,8 @@ static bool shouldYieldThread() {
 /// Linux) or is a plain global (embedded), give it a stable name and protected
 /// visibility, enabling debuggers to locate the symbol by name and ensuring it
 /// survives stripping the symbol table.
-/// Bump _concurrency_current_task_storage_kind in Debug.h if this changes.
+/// Update swift_concurrency_current_task_storage_kind in
+/// swift/Runtime/ConcurrencyDebug.h if this changes.
 #ifdef SWIFT_THREAD_LOCAL
 extern "C" {
 // (windows) dllexport is not allowed on thread-local variables.
@@ -294,7 +295,7 @@ void swift::runJobInEstablishedExecutorContext(Job *job,
 /// Runs the Task embedded in the stealer using the stealer's exclusion value.
 /// The stealer holds a reference to the Task which is released here. Stealers
 /// are not reference counted so the object is directly destroyed here.
-inline void AsyncTaskStealer::process(Job *_job) {
+void AsyncTaskStealer::process(Job *_job) {
   auto *stealer = cast<AsyncTaskStealer>(_job);
   SWIFT_TASK_DEBUG_LOG("Running stealer %p for Task %p", _job, stealer->Task);
 

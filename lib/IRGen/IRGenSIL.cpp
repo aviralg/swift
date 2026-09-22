@@ -2470,19 +2470,29 @@ static void emitEntryPointArgumentsCOrObjC(IRGenSILFunction &IGF,
 
   unsigned nextArgTyIdx = 0;
 
-  // Handle the `this` argument of a C++ method. SIL passes `self` last and
-  // indirectly; bind it to the `this` pointer.
+  // Handle the `this` argument of a C++ method. SIL passes `self` last; bind
+  // it to the `this` pointer.
   if (isCXXMethod) {
     SILArgument *selfArg = args.back();
     args = args.slice(0, args.size() - 1);
-    assert(selfArg->getType().isAddress() &&
-           "C++ method self should be passed indirectly");
 
     if (!thisValue)
       thisValue = params.claimNext();
-    const auto &selfTI = IGF.getTypeInfo(selfArg->getType());
-    IGF.setLoweredAddress(selfArg, Address(thisValue, selfTI.getStorageType(),
-                                           selfTI.getBestKnownAlignment()));
+    if (selfArg->getType().isAddress()) {
+      // The `self` of a value type is passed indirectly: `this` is its
+      // address.
+      const auto &selfTI = IGF.getTypeInfo(selfArg->getType());
+      IGF.setLoweredAddress(selfArg, Address(thisValue, selfTI.getStorageType(),
+                                             selfTI.getBestKnownAlignment()));
+    } else {
+      // The `self` of a foreign reference type is a reference to the C++
+      // object: `this` is its value.
+      ASSERT(selfArg->getType().isForeignReferenceType() &&
+             "direct C++ method self must be a foreign reference");
+      Explosion self;
+      self.add(thisValue);
+      IGF.setLoweredExplosion(selfArg, self);
+    }
 
     // Skip `this` when handling the explicit arguments below.
     nextArgTyIdx = 1;
@@ -8083,12 +8093,11 @@ void IRGenSILFunction::visitUnconditionalCheckedCastAddrInst(
                                    swift::UnconditionalCheckedCastAddrInst *i) {
   Address dest = getLoweredAddress(i->getDest());
   Address src = getLoweredAddress(i->getSrc());
-  emitCheckedCast(*this,
-                  src, i->getSourceFormalType(),
-                  dest, i->getTargetFormalType(),
-                  CastConsumptionKind::TakeAlways,
-                  CheckedCastMode::Unconditional,
-                  i->getCheckedCastOptions());
+  auto consumption = i->isCopy() ? CastConsumptionKind::CopyOnSuccess
+                                 : CastConsumptionKind::TakeAlways;
+  emitCheckedCast(*this, src, i->getSourceFormalType(), dest,
+                  i->getTargetFormalType(), consumption,
+                  CheckedCastMode::Unconditional, i->getCheckedCastOptions());
 }
 
 void IRGenSILFunction::visitCheckedCastBranchInst(
@@ -8141,6 +8150,10 @@ void IRGenSILFunction::visitCheckedCastBranchInst(
 
 void IRGenSILFunction::visitCheckedCastAddrBranchInst(
                                           swift::CheckedCastAddrBranchInst *i) {
+  // test_only has no destination to write a result into, and needs a runtime
+  // entry point that only answers the question. Not wired up yet.
+  ASSERT(i->hasDest() &&
+         "IRGen support for checked_cast_addr_br test_only is not implemented");
   Address dest = getLoweredAddress(i->getDest());
   Address src = getLoweredAddress(i->getSrc());
   llvm::Value *castSucceeded =

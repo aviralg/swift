@@ -131,16 +131,6 @@ static std::optional<unsigned> scoreParamAndArgNameTypo(StringRef paramName,
   return dist;
 }
 
-bool constraints::isPackExpansionType(Type type) {
-  if (type->is<PackExpansionType>())
-    return true;
-
-  if (auto *typeVar = type->getAs<TypeVariableType>())
-    return typeVar->getImpl().isPackExpansion();
-
-  return false;
-}
-
 bool constraints::isSingleUnlabeledPackExpansionTuple(Type type) {
   auto *tuple = type->getRValueType()->getAs<TupleType>();
   return tuple && (tuple->getNumElements() == 1) &&
@@ -2540,35 +2530,6 @@ static bool matchFunctionRepresentations(FunctionType::ExtInfo einfo1,
   llvm_unreachable("Unhandled ConstraintKind in switch.");
 }
 
-/// Check whether given parameter list represents a single tuple
-/// or type variable which could be later resolved to tuple.
-/// This is useful for SE-0110 related fixes in `matchFunctionTypes`.
-static bool isSingleTupleParam(ASTContext &ctx,
-                               ArrayRef<AnyFunctionType::Param> params) {
-  if (params.size() != 1)
-    return false;
-
-  const auto &param = params.front();
-  if ((param.isVariadic() || isPackExpansionType(param.getPlainType())) ||
-      param.isInOut() || param.hasLabel() || param.isIsolated())
-    return false;
-
-  auto paramType = param.getPlainType();
-
-  // Support following case which was allowed until 5:
-  //
-  // func bar(_: (Int, Int) -> Void) {}
-  // let foo: ((Int, Int)?) -> Void = { _ in }
-  //
-  // bar(foo) // Ok
-  if (!ctx.isLanguageModeAtLeast(LanguageMode::v5))
-    paramType = paramType->lookThroughAllOptionalTypes();
-
-  // Parameter type should either a tuple or something that can become a
-  // tuple later on.
-  return (paramType->is<TupleType>() || paramType->isTypeVariableOrMember());
-}
-
 static ConstraintFix *fixRequirementFailure(ConstraintSystem &cs, Type type1,
                                             Type type2, ASTNode anchor,
                                             ArrayRef<LocatorPathElt> path);
@@ -2706,7 +2667,7 @@ static bool fixMissingArguments(ConstraintSystem &cs, ASTNode anchor,
   // (which might be anonymous), it's most likely used as a
   // tuple e.g. `$0.0`.
   std::optional<TypeBase *> argumentTuple;
-  if (isSingleTupleParam(ctx, args)) {
+  if (isSingleTupleParam(args)) {
     auto argType = args.back().getPlainType();
     // Let's unpack argument tuple into N arguments, this corresponds
     // to something like `foo { (bar: (Int, Int)) in }` where `foo`
@@ -2979,16 +2940,16 @@ ConstraintSystem::matchFunctionExecutionSemantics(
     return SolutionKind::Unsolved;
   };
 
-  // First check to see if we have any @called(once) dependent function types,
-  // if any of them still have unresolved type variables we need to wait until
-  // they're fully resolved.
-  auto dep1 = func1->getCalledOnceDependentType();
+  // First check to see if we have any @called(atMostOnce) dependent function
+  // types, if any of them still have unresolved type variables we need to wait
+  // until they're fully resolved.
+  auto dep1 = func1->getExecutionSemanticsDependentType();
   if (dep1) {
     dep1 = simplifyType(dep1);
     if (dep1->hasTypeVariable())
       return formUnsolved();
   }
-  auto dep2 = func2->getCalledOnceDependentType();
+  auto dep2 = func2->getExecutionSemanticsDependentType();
   if (dep2) {
     dep2 = simplifyType(dep2);
     if (dep2->hasTypeVariable())
@@ -2997,11 +2958,13 @@ ConstraintSystem::matchFunctionExecutionSemantics(
 
   // Sendability is given by either the sendability of the dependent type if
   // present, otherwise it's given by the function itself.
-  auto func1CalledOnce = dep1 ? dep1->isNoncopyable() : func1->isCalledOnce();
-  auto func2CalledOnce = dep2 ? dep2->isNoncopyable() : func2->isCalledOnce();
+  auto func1HasCalledAtMostOnceSemantics =
+      dep1 ? dep1->isNoncopyable() : func1->hasCalledAtMostOnceSemantics();
+  auto func2HasCalledAtMostOnceSemantics =
+      dep2 ? dep2->isNoncopyable() : func2->hasCalledAtMostOnceSemantics();
 
-  if (func1CalledOnce != func2CalledOnce) {
-    if (func1CalledOnce || kind < ConstraintKind::Subtype) {
+  if (func1HasCalledAtMostOnceSemantics != func2HasCalledAtMostOnceSemantics) {
+    if (func1HasCalledAtMostOnceSemantics || kind < ConstraintKind::Subtype) {
       if (!shouldAttemptFixes())
         return SolutionKind::Error;
 
@@ -3462,29 +3425,11 @@ ConstraintSystem::matchFunctionTypes(FunctionType *func1, FunctionType *func2,
   // arity);
   auto canImplodeParams = [&](ArrayRef<AnyFunctionType::Param> params,
                               const FunctionType *destFn) {
-    if (params.size() == 1)
-      return false;
-
     // We do not support imploding into a @differentiable function.
     if (destFn->isDifferentiable())
       return false;
 
-    for (auto &param : params) {
-      // We generally cannot handle parameter flags, though we can carve out an
-      // exception for ownership flags such as __owned, which we can thunk, and
-      // flags that can freely dropped from a function type such as
-      // @_nonEphemeral. Note that @noDerivative can also be freely dropped, as
-      // we've already ensured that the destination function is not
-      // @differentiable.
-      auto flags = param.getParameterFlags();
-      flags = flags.withOwnershipSpecifier(
-          param.isInOut() ? ParamSpecifier::InOut : ParamSpecifier::Default);
-      flags = flags.withNonEphemeral(false)
-                   .withNoDerivative(false);
-      if (!flags.isNone())
-        return false;
-    }
-    return true;
+    return AnyFunctionType::canComposeTuple(params);
   };
 
   auto implodeParams = [&](SmallVectorImpl<AnyFunctionType::Param> &params) {
@@ -3526,12 +3471,12 @@ ConstraintSystem::matchFunctionTypes(FunctionType *func1, FunctionType *func2,
     auto &ctx = getASTContext();
     if (last != path.rend()) {
       if (last->getKind() == ConstraintLocator::ApplyArgToParam) {
-        if (isSingleTupleParam(ctx, func2Params) &&
+        if (isSingleTupleParam(func2Params) &&
             canImplodeParams(func1Params, /*destFn*/ func2)) {
           implodeParams(func1Params);
           increaseScore(SK_FunctionConversion, locator);
         } else if (!ctx.isLanguageModeAtLeast(LanguageMode::v5) &&
-                   isSingleTupleParam(ctx, func1Params) &&
+                   isSingleTupleParam(func1Params) &&
                    canImplodeParams(func2Params,  /*destFn*/ func1)) {
           auto *simplified = locator.trySimplifyToExpr();
           // We somehow let tuple unsplatting function conversions
@@ -3587,11 +3532,11 @@ ConstraintSystem::matchFunctionTypes(FunctionType *func1, FunctionType *func2,
         //
         // 2. `case .bar(let tuple) = e` allows to match multiple
         //    parameters with a single tuple argument.
-        if (isSingleTupleParam(ctx, func1Params) &&
+        if (isSingleTupleParam(func1Params) &&
             canImplodeParams(func2Params, /*destFn*/ func1)) {
           implodeParams(func2Params);
           increaseScore(SK_FunctionConversion, locator);
-        } else if (isSingleTupleParam(ctx, func2Params) &&
+        } else if (isSingleTupleParam(func2Params) &&
                    canImplodeParams(func1Params, /*destFn*/ func2)) {
           implodeParams(func1Params);
           increaseScore(SK_FunctionConversion, locator);
@@ -3602,7 +3547,7 @@ ConstraintSystem::matchFunctionTypes(FunctionType *func1, FunctionType *func2,
     if (shouldAttemptFixes()) {
       auto *anchor = locator.trySimplifyToExpr();
       if (isa_and_nonnull<ClosureExpr>(anchor) &&
-          isSingleTupleParam(ctx, func2Params) &&
+          isSingleTupleParam(func2Params) &&
           canImplodeParams(func1Params, /*destFn*/ func2)) {
         auto *fix = AllowClosureParamDestructuring::create(
             *this, func2, getConstraintLocator(anchor));
@@ -3634,7 +3579,7 @@ ConstraintSystem::matchFunctionTypes(FunctionType *func1, FunctionType *func2,
 
     if (last != path.rend()) {
       if (last->getKind() == ConstraintLocator::ApplyArgToParam) {
-        if (isSingleTupleParam(getASTContext(), func1Params) &&
+        if (isSingleTupleParam(func1Params) &&
             func1Params[0].getOldType()->isVoid()) {
           if (func2Params.empty()) {
             func2Params.emplace_back(getASTContext().TheEmptyTupleType);
@@ -7350,7 +7295,7 @@ static bool isDependentMemberTypeWithBaseThatContainsUnresolvedPackExpansions(
   // though since pack expansions can be present in fixed types for nested
   // type vars.
   auto baseTy = cs.simplifyType(type->getDependentMemberRoot());
-  llvm::SmallPtrSet<TypeVariableType *, 2> typeVars;
+  SmallPtrSetVector<TypeVariableType *, 4> typeVars;
   baseTy->getTypeVariables(typeVars);
   return llvm::any_of(typeVars, [](const TypeVariableType *typeVar) {
     return typeVar->getImpl().isPackExpansion();
@@ -7686,8 +7631,14 @@ ConstraintSystem::matchTypes(Type type1, Type type2, ConstraintKind kind,
   // them. If they
   //  are valid wrapping targets, they will be tuple-wrapped after the lvalue is
   //  converted.
+  //
+  // Also check the fixed types: a type variable can be bound to a tuple with
+  // an unresolved pack expansion, for example when matching the root and value
+  // of an identity key path to its contextual type.
   if (isTupleWithUnresolvedPackExpansion(origType1) ||
-      isTupleWithUnresolvedPackExpansion(origType2)) {
+      isTupleWithUnresolvedPackExpansion(origType2) ||
+      isTupleWithUnresolvedPackExpansion(type1) ||
+      isTupleWithUnresolvedPackExpansion(type2)) {
     auto isTypeVariableWrappedInOptional = [](Type type) {
       if (type->getOptionalObjectType()) {
         return type->lookThroughAllOptionalTypes()->isTypeVariableOrMember();
@@ -7865,7 +7816,7 @@ ConstraintSystem::matchTypes(Type type1, Type type2, ConstraintKind kind,
         bool afterPack = false;
         for (auto element : tuple->getElements()) {
           if (afterPack && !element.hasName()) {
-            SmallPtrSet<TypeVariableType *, 2> typeVars;
+            SmallPtrSetVector<TypeVariableType *, 4> typeVars;
             element.getType()->getTypeVariables(typeVars);
 
             bool hasUnresolvedPack = llvm::any_of(typeVars, [](auto *tv) {
@@ -12644,12 +12595,14 @@ bool ConstraintSystem::resolveClosure(TypeVariableType *typeVar,
       }
     }
 
-    // Infer `@called(once)` from the contextual type.
-    if (!closureExtInfo.isCalledOnce()) {
-      if (auto calledOnceTy = contextualFnType->getCalledOnceDependentType()) {
-        closureExtInfo = closureExtInfo.withCalledOnceDependentType(calledOnceTy);
-      } else if (contextualFnType->isCalledOnce()) {
-        closureExtInfo = closureExtInfo.withCalledOnce();
+    // Infer `@called(atMostOnce)` from the contextual type.
+    if (!closureExtInfo.hasCalledAtMostOnceSemantics()) {
+      if (auto executionSemanticsTy =
+              contextualFnType->getExecutionSemanticsDependentType()) {
+        closureExtInfo = closureExtInfo.withExecutionSemanticsDependentType(
+            executionSemanticsTy);
+      } else if (auto semantics = contextualFnType->getExecutionSemantics()) {
+        closureExtInfo = closureExtInfo.withExecutionSemantics(semantics);
       }
     }
   }
@@ -12766,7 +12719,10 @@ ConstraintSystem::simplifyDynamicTypeOfConstraint(
   if (!type2->isTypeVariableOrMember()) {
     Type dynamicType2;
     if (type2->isAnyExistentialType()) {
-      dynamicType2 = ExistentialMetatypeType::get(type2);
+      if (type2->isCOMExistentialType())
+        dynamicType2 = ExistentialMetatypeType::get(getASTContext().TheAnyType);
+      else
+        dynamicType2 = ExistentialMetatypeType::get(type2);
     } else {
       dynamicType2 = MetatypeType::get(type2);
     }
@@ -14229,7 +14185,7 @@ static bool hasUnresolvedPackVars(Type type) {
   // We can't compute a reduced shape if the input type still
   // contains type variables that might bind to pack archetypes
   // or pack expansions.
-  SmallPtrSet<TypeVariableType *, 2> typeVars;
+  SmallPtrSetVector<TypeVariableType *, 4> typeVars;
   type->getTypeVariables(typeVars);
   return llvm::any_of(typeVars, [](const TypeVariableType *typeVar) {
     return typeVar->getImpl().canBindToPack() ||
@@ -14265,7 +14221,7 @@ ConstraintSystem::SolutionKind ConstraintSystem::simplifyShapeOfConstraint(
   // We can't compute a reduced shape if the input type still
   // contains type variables that might bind to pack archetypes
   // or pack expansions.
-  SmallPtrSet<TypeVariableType *, 2> typeVars;
+  SmallPtrSetVector<TypeVariableType *, 4> typeVars;
   packTy->getTypeVariables(typeVars);
   for (auto *typeVar : typeVars) {
     if (typeVar->getImpl().canBindToPack() ||
@@ -16454,16 +16410,13 @@ ConstraintSystem::addArgumentConversionConstraintImpl(
   if (auto *argTypeVar = first->getAs<TypeVariableType>()) {
     if (argTypeVar->getImpl().isClosureType()) {
       // Extract any type variables present in the parameter's result builder.
-      SmallPtrSet<TypeVariableType *, 4> typeVars;
+      SmallPtrSetVector<TypeVariableType *, 4> referencedVars;
       if (auto builderTy = getOpenedResultBuilderTypeFor(*this, locator))
-        builderTy->getTypeVariables(typeVars);
-
-      SmallVector<TypeVariableType *, 4> referencedVars{typeVars.begin(),
-                                                        typeVars.end()};
+        builderTy->getTypeVariables(referencedVars);
 
       auto *loc = getConstraintLocator(locator);
-      addUnsolvedConstraint(
-          Constraint::create(*this, kind, first, second, loc, referencedVars));
+      addUnsolvedConstraint(Constraint::create(*this, kind, first, second, loc,
+                                               referencedVars.getArrayRef()));
       return SolutionKind::Solved;
     }
   }

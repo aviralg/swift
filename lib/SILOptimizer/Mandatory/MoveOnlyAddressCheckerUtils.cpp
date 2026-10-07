@@ -2698,6 +2698,18 @@ bool GatherUsesVisitor::visitUse(Operand *op) {
     return true;
   }
 
+  if (auto *cast = dyn_cast<UnconditionalCheckedCastAddrInst>(user)) {
+    if (cast->getSrc() == op->get() && cast->isCopy()) {
+      SmallVector<TypeTreeLeafTypeRange, 2> leafRanges;
+      TypeTreeLeafTypeRange::get(op, getRootAddress(), leafRanges);
+      if (leafRanges.empty())
+        return false;
+      for (auto leafRange : leafRanges)
+        useState.recordLivenessUse(user, leafRange);
+      return true;
+    }
+  }
+
   // For TakeOnSuccess, only a successful cast consumes Src.  A failed cast
   // leaves Src in place. Model this by recording the take at the entry of the
   // success block rather than at the branch itself, so liveness treats Src as
@@ -2720,6 +2732,28 @@ bool GatherUsesVisitor::visitUse(Operand *op) {
       for (auto leafRange : leafRanges) {
         if (consumption == CastConsumptionKind::TakeOnSuccess)
           useState.recordTakeUse(&ccabi->getSuccessBB()->front(), leafRange);
+        useState.recordLivenessUse(user, leafRange);
+      }
+      return true;
+    }
+
+    // A test_only cast only reads Src -- it neither takes nor copies it, and
+    // writes nothing (it has no dest). That makes it a plain liveness use.  It
+    // can't fall through to the generic liveness path below, because other
+    // checked_cast_addr_br forms do write and that path asserts against any
+    // user whose memory behavior admits a write.
+    if (ccabi->getSrc() == op->get() &&
+        ccabi->getConsumptionKind() == CastConsumptionKind::TestOnly) {
+      LLVM_DEBUG(llvm::dbgs() << "Found checked_cast_addr_br test_only Src: "
+                              << *user);
+      SmallVector<TypeTreeLeafTypeRange, 2> leafRanges;
+      TypeTreeLeafTypeRange::get(op, getRootAddress(), leafRanges);
+      if (!leafRanges.size()) {
+        LLVM_DEBUG(llvm::dbgs() << "Failed to form leaf type range!\n");
+        return false;
+      }
+
+      for (auto leafRange : leafRanges) {
         useState.recordLivenessUse(user, leafRange);
       }
       return true;

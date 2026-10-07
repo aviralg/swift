@@ -1016,10 +1016,10 @@ SILIsolationInfo SILIsolationInfo::get(SILArgument *arg) {
             isClosureCapturedNonisolatedUnsafe);
       }
 
-      // All of the non-Sendable captures of non-escaping @called(once) closures
-      // that aren't explicitly `sending` are disconnected.
+      // All of the non-Sendable captures of non-escaping @called(atMostOnce)
+      // closures that aren't explicitly `sending` are disconnected.
       if (auto *closure = declRef.getClosureExpr();
-          closure && closure->isCalledOnce()) {
+          closure && closure->hasCalledAtMostOnceSemantics()) {
         auto *closureTy = closure->getType()->castTo<FunctionType>();
         if (closureTy->getExtInfo().isNoEscape())
           return SILIsolationInfo::getDisconnected(
@@ -1252,7 +1252,9 @@ SILIsolationInfo SILIsolationInfo::getForCastConformances(
   return {};
 }
 
-/// Retrieve a suitable destination value for the cast instruction.
+/// Retrieve a suitable destination value for the cast instruction, or an
+/// invalid value if the cast produces none -- `checked_cast_addr_br test_only`
+/// reports only whether the cast would succeed.
 ///
 /// TODO: This should probably be SILDynamicCastInst::getDest(), but that has
 /// unimplemented TODOs.
@@ -1284,8 +1286,13 @@ SILIsolationInfo SILIsolationInfo::getConformanceIsolation(SILInstruction *inst)
 
   // Dynamic casts.
   if (auto dynCast = SILDynamicCastInst::getAs(inst)) {
+    // A cast that produces no value has nothing to carry an isolated
+    // conformance.
+    SILValue dest = destValueForDynamicCast(dynCast);
+    if (!dest)
+      return {};
     return getForCastConformances(
-        destValueForDynamicCast(dynCast),
+        dest,
         dynCast.getSourceFormalType(),
         dynCast.getTargetFormalType());
   }

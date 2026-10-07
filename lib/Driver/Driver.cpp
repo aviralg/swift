@@ -381,6 +381,20 @@ static void validateLinkArgs(DiagnosticEngine &diags, const ArgList &args) {
   }
 }
 
+/// The driver forwards -serialize-diagnostics=<format> only alongside a SARIF
+/// log path, so the frontend never sees an unknown format; reject it here, as
+/// the frontend would. As with other options, the last occurrence is the one
+/// that takes effect.
+static void validateSerializedDiagnosticsArgs(DiagnosticEngine &diags,
+                                              const ArgList &args) {
+  if (const Arg *A = args.getLastArg(options::OPT_serialize_diagnostics_EQ)) {
+    StringRef format = A->getValue();
+    if (format != "dia" && format != "sarif")
+      diags.diagnose(SourceLoc(), diag::error_invalid_arg_value,
+                     A->getOption().getPrefixedName(), format);
+  }
+}
+
 /// Perform miscellaneous early validation of arguments.
 static void validateArgs(DiagnosticEngine &diags, const ArgList &args,
                          const llvm::Triple &T) {
@@ -393,6 +407,7 @@ static void validateArgs(DiagnosticEngine &diags, const ArgList &args,
   validateCompilationConditionArgs(diags, args);
   validateSearchPathArgs(diags, args);
   validateLinkArgs(diags, args);
+  validateSerializedDiagnosticsArgs(diags, args);
 }
 
 std::unique_ptr<ToolChain>
@@ -2437,7 +2452,8 @@ static void addAuxiliaryOutput(
 }
 
 static void addDiagFileOutputForPersistentPCHAction(
-    Compilation &C, const GeneratePCHJobAction *JA, CommandOutput &output,
+    Compilation &C, const GeneratePCHJobAction *JA,
+    file_types::ID diagnosticsType, CommandOutput &output,
     const TypeToPathMap *outputMap, StringRef workingDirectory) {
   assert(JA->isPersistentPCH());
 
@@ -2450,8 +2466,7 @@ static void addDiagFileOutputForPersistentPCHAction(
   StringRef pchOutDir = JA->getPersistentPCHDir();
   StringRef headerPath = output.getBaseInput(JA->getInputIndex());
   StringRef stem = llvm::sys::path::stem(headerPath);
-  StringRef suffix =
-      file_types::getExtension(file_types::TY_SerializedDiagnostics);
+  StringRef suffix = file_types::getExtension(diagnosticsType);
   SmallString<256> outPathBuf;
 
   if (const Arg *A = C.getArgs().getLastArg(options::OPT_emit_module_path)) {
@@ -2481,8 +2496,8 @@ static void addDiagFileOutputForPersistentPCHAction(
   }
 
   if (!outPathBuf.empty()) {
-    addAuxiliaryOutput(C, output, file_types::TY_SerializedDiagnostics,
-                       outputMap, workingDirectory, outPathBuf.str());
+    addAuxiliaryOutput(C, output, diagnosticsType, outputMap, workingDirectory,
+                       outPathBuf.str());
   }
 }
 
@@ -2597,7 +2612,8 @@ Job *Driver::buildJobsForAction(Compilation &C, const JobAction *JA,
 
   if (isa<CompileJobAction>(JA) || isa<GeneratePCHJobAction>(JA)) {
     // Choose the serialized diagnostics output path.
-    if (C.getArgs().hasArg(options::OPT_serialize_diagnostics))
+    if (C.getArgs().hasArg(options::OPT_serialize_diagnostics,
+                           options::OPT_serialize_diagnostics_EQ))
       chooseSerializedDiagnosticsPath(C, JA, OutputMap, workingDirectory,
                                       Output.get());
   }
@@ -2956,25 +2972,40 @@ void Driver::chooseModuleSummaryPath(Compilation &C,
                      /*requireArg=*/options::OPT_emit_module_summary);
 }
 
+/// The file type diagnostics are serialized to, which depends on the format
+/// requested by -serialize-diagnostics=<format>.
+static file_types::ID
+serializedDiagnosticsType(const llvm::opt::ArgList &Args) {
+  if (const Arg *A = Args.getLastArg(options::OPT_serialize_diagnostics_EQ))
+    if (StringRef(A->getValue()) == "sarif")
+      return file_types::TY_SARIFDiagnostics;
+  return file_types::TY_SerializedDiagnostics;
+}
+
 void Driver::chooseSerializedDiagnosticsPath(Compilation &C,
                                              const JobAction *JA,
                                              const TypeToPathMap *OutputMap,
                                              StringRef workingDirectory,
                                              CommandOutput *Output) const {
-  if (C.getArgs().hasArg(options::OPT_serialize_diagnostics)) {
+  if (C.getArgs().hasArg(options::OPT_serialize_diagnostics,
+                         options::OPT_serialize_diagnostics_EQ)) {
+    // One type decides both the output that is registered and the stale file
+    // that is removed below, so that the two cannot disagree.
+    const file_types::ID diagnosticsType =
+        serializedDiagnosticsType(C.getArgs());
+
     auto pchJA = dyn_cast<GeneratePCHJobAction>(JA);
     if (pchJA && pchJA->isPersistentPCH()) {
-      addDiagFileOutputForPersistentPCHAction(C, pchJA, *Output, OutputMap,
-                                              workingDirectory);
+      addDiagFileOutputForPersistentPCHAction(
+          C, pchJA, diagnosticsType, *Output, OutputMap, workingDirectory);
     } else {
-      addAuxiliaryOutput(C, *Output, file_types::TY_SerializedDiagnostics,
-                         OutputMap, workingDirectory);
+      addAuxiliaryOutput(C, *Output, diagnosticsType, OutputMap,
+                         workingDirectory);
     }
 
     // Remove any existing diagnostics files so that clients can detect their
     // presence to determine if a command was run.
-    StringRef OutputPath =
-        Output->getAnyOutputForType(file_types::TY_SerializedDiagnostics);
+    StringRef OutputPath = Output->getAnyOutputForType(diagnosticsType);
     if (llvm::sys::fs::is_regular_file(OutputPath))
       llvm::sys::fs::remove(OutputPath);
   }

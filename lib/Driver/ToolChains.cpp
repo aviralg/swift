@@ -121,6 +121,29 @@ static bool addOutputsOfType(ArgStringList &Arguments,
   return Added;
 }
 
+/// Pass along the serialized diagnostics path. Only the file type matching the
+/// requested format has an output, so at most one of these contributes.
+static void addSerializedDiagnosticsPaths(ArgStringList &Arguments,
+                                          CommandOutput const &Output,
+                                          const llvm::opt::ArgList &Args) {
+  addOutputsOfType(Arguments, Output, Args,
+                   file_types::TY_SerializedDiagnostics,
+                   "-serialize-diagnostics-path");
+  addOutputsOfType(Arguments, Output, Args, file_types::TY_SARIFDiagnostics,
+                   "-serialize-diagnostics-path");
+}
+
+/// Pass the serialized diagnostics format to a job with a SARIF output. The
+/// format goes only with such an output, since the flag turns serialization on
+/// by itself. It is needed whether the paths are passed as arguments or in a
+/// supplementary output file map, which carries the paths but not the format.
+static void addSerializedDiagnosticsFormat(ArgStringList &Arguments,
+                                           CommandOutput const &Output) {
+  if (!Output.getAdditionalOutputsForType(file_types::TY_SARIFDiagnostics)
+           .empty())
+    Arguments.push_back("-serialize-diagnostics=sarif");
+}
+
 static void addLTOArgs(const OutputInfo &OI, ArgStringList &arguments) {
   switch (OI.LTOVariant) {
   case OutputInfo::LTOKind::None:
@@ -898,6 +921,7 @@ void ToolChain::JobContext::addFrontendInputAndOutputArguments(
   } else {
     addFrontendSupplementaryOutputArguments(Arguments);
   }
+  addSerializedDiagnosticsFormat(Arguments, Output);
 }
 
 void ToolChain::JobContext::addFrontendCommandLineInputArguments(
@@ -960,9 +984,7 @@ void ToolChain::JobContext::addFrontendSupplementaryOutputArguments(
                    file_types::ID::TY_PackageSwiftModuleInterfaceFile,
                    "-emit-package-module-interface-path");
 
-  addOutputsOfType(arguments, Output, Args,
-                   file_types::TY_SerializedDiagnostics,
-                   "-serialize-diagnostics-path");
+  addSerializedDiagnosticsPaths(arguments, Output, Args);
 
   if (addOutputsOfType(arguments, Output, Args, file_types::ID::TY_ClangHeader,
                        "-emit-objc-header-path")) {
@@ -1486,9 +1508,8 @@ ToolChain::constructInvocation(const GeneratePCHJobAction &job,
   addCommonFrontendArgs(context.OI, context.Output, context.Args, Arguments);
   addRuntimeLibraryFlags(context.OI, Arguments);
 
-  addOutputsOfType(Arguments, context.Output, context.Args,
-                   file_types::TY_SerializedDiagnostics,
-                   "-serialize-diagnostics-path");
+  addSerializedDiagnosticsPaths(Arguments, context.Output, context.Args);
+  addSerializedDiagnosticsFormat(Arguments, context.Output);
 
   addInputsOfType(Arguments, context.InputActions, file_types::TY_ClangHeader);
   context.Args.AddLastArg(Arguments, options::OPT_index_store_path);

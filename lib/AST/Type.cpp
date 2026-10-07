@@ -52,7 +52,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
-#include <functional>
 #include <iterator>
 using namespace swift;
 
@@ -588,6 +587,15 @@ bool ExistentialLayout::needsExtendedShape(
   // Would any inverses in this layout would be considered by the mangler?
   allowedInverses.intersect(inverses);
   return !allowedInverses.empty();
+}
+
+bool TypeBase::isCOMExistentialType() {
+  return getCanonicalType().isCOMExistentialType();
+}
+
+bool CanType::isCOMExistentialTypeImpl(CanType type) {
+  return type.isExistentialType() &&
+         type.getExistentialLayout().getCOMInterface();
 }
 
 bool TypeBase::isObjCExistentialType() {
@@ -1454,6 +1462,7 @@ bool TypeBase::isCGFloat() {
   auto *module = DC->getParentModule();
   // On macOS `CGFloat` is part of a `CoreGraphics` module,
   // but on Linux it could be found in `Foundation`.
+  // Keep this list in sync with ASTContext::getCGFloatDecl().
   return (module->getName().is("CoreGraphics") ||
           module->getName().is("Foundation")   ||
           module->getName().is("CoreFoundation")) &&
@@ -3247,6 +3256,17 @@ bool TypeBase::hasRetainablePointerRepresentation() {
   return ::hasRetainablePointerRepresentation(getCanonicalType());
 }
 
+bool TypeBase::hasCCompatibleForeignReferenceRepresentation() {
+  Type type(this);
+  if (auto objectType = type->getOptionalObjectType())
+    type = objectType;
+
+  if (auto existential = type->getAs<ExistentialType>())
+    type = existential->getConstraintType();
+
+  return type->isCOMExistentialType();
+}
+
 bool TypeBase::isBridgeableObjectType() {
   return ::isBridgeableObjectType(getCanonicalType());
 }
@@ -3359,6 +3379,11 @@ getForeignRepresentable(Type type, ForeignLanguage language,
   // If type has an error let's fail early.
   if (type->hasError())
     return failure();
+
+  // A COM existential is representable in C as its bare interface pointer.
+  if (language == ForeignLanguage::C &&
+      type->hasCCompatibleForeignReferenceRepresentation())
+    return {ForeignRepresentableKind::Trivial, nullptr};
 
   // Look through one level of optional type, but remember that we did.
   bool wasOptional = false;

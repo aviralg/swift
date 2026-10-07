@@ -997,6 +997,10 @@ public:
   /// isErrorExistentialType - Determines whether this type is 'any Error'.
   bool isErrorExistentialType();
 
+  /// Whether this is an existential type represented by a single COM interface.
+  /// Does not look through optional types or existential metatypes.
+  bool isCOMExistentialType();
+
   /// isObjCExistentialType - Determines whether this type is an
   /// class-bounded existential type whose required conformances are
   /// all @objc.  Such types are compatible with ObjC.
@@ -1329,6 +1333,11 @@ public:
   /// They act as Swift classes but are not compatible with Swift's
   /// retain/release runtime functions.
   bool hasRetainablePointerRepresentation();
+
+  /// Determines whether this type has the representation of a single pointer
+  /// managed by a foreign object model and can be passed directly through the
+  /// C ABI. This includes one level of optionality.
+  bool hasCCompatibleForeignReferenceRepresentation();
 
   /// Given that this type is a reference type, which kind of reference
   /// counting does it use?

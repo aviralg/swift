@@ -3,6 +3,7 @@
 // REQUIRES: OS=macosx
 // REQUIRES: swift_feature_Embedded
 // REQUIRES: swift_feature_EmbeddedDistributed
+// REQUIRES: optimized_stdlib
 
 // Pseudo code of the synthesized func:
 //
@@ -47,7 +48,7 @@ distributed actor Greeter {
 // It switches on the identifier's byte count and compares against it via
 // 'identifierEquals', not through String's UTF8 view.
 // CHECK: switch_stmt
-// CHECK: member_ref_expr {{.*}}decl="Distributed.(file).RemoteCallTarget.identifierByteCount"
+// CHECK: member_ref_expr {{.*}}decl="Distributed.(file).RemoteCallTarget.identifierByteCount{{.*}}"
 // CHECK: declref_expr {{.*}}decl="Distributed.(file).RemoteCallTarget.identifierEquals
 
 // The matched branch: decode the argument, call the local impl, deliver the result.

@@ -23,12 +23,8 @@
 #include "swift/AST/IRGenOptions.h"
 #include "swift/AST/KnownProtocols.h"
 #include "swift/AST/Types.h"
-#include "swift/Basic/Assertions.h"
 #include "swift/IRGen/Linking.h"
-#include "swift/SIL/SILValue.h"
 #include "swift/SIL/TypeLowering.h"
-#include "llvm/ADT/SmallString.h"
-#include "llvm/IR/Constant.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -40,6 +36,7 @@
 #include "ClassTypeInfo.h"
 #include "FixedTypeInfo.h"
 #include "GenClass.h"
+#include "GenExistential.h"
 #include "GenHeap.h"
 #include "GenMeta.h"
 #include "GenOpaque.h"
@@ -135,6 +132,12 @@ public:
     return new OpaqueArchetypeTypeInfo(type, abiAccessible);
   }
 
+  std::unique_ptr<SerializableHiddenTypeInfoRepresentation>
+  createSerializableHiddenTypeInfoRepresentation(
+      IRGenModule &) const override {
+    unsupportedSerializableHiddenTypeInfoRepresentation();
+  }
+
   void collectMetadataForOutlining(OutliningMetadataCollector &collector,
                                    SILType T) const override {
     // We'll need formal type metadata for this archetype.
@@ -181,6 +184,12 @@ public:
          ReferenceCounting refCount, const ClassTypeInfo *customRefCountingTI) {
     return new ClassArchetypeTypeInfo(storageType, size, spareBits, align,
                                       refCount, customRefCountingTI);
+  }
+
+  std::unique_ptr<SerializableHiddenTypeInfoRepresentation>
+  createSerializableHiddenTypeInfoRepresentation(
+      IRGenModule &) const override {
+    unsupportedSerializableHiddenTypeInfoRepresentation();
   }
 
   ReferenceCounting getReferenceCounting() const {
@@ -238,6 +247,12 @@ public:
   create(llvm::Type *type, Size size, Alignment align,
          const SpareBitVector &spareBits) {
     return new FixedSizeArchetypeTypeInfo(type, size, align, spareBits);
+  }
+
+  std::unique_ptr<SerializableHiddenTypeInfoRepresentation>
+  createSerializableHiddenTypeInfoRepresentation(
+      IRGenModule &) const override {
+    unsupportedSerializableHiddenTypeInfoRepresentation();
   }
 };
 } // end anonymous namespace
@@ -384,6 +399,15 @@ irgen::emitAssociatedTypeMetadataRef(IRGenFunction &IGF,
 
 const TypeInfo *TypeConverter::convertArchetypeType(ArchetypeType *archetype) {
   assert(isExemplarArchetype(archetype) && "lowering non-exemplary archetype");
+
+  // An opened COM existential contains its interface pointer directly.
+  // Ordinary generic parameters constrained to a COM interface remain opaque
+  // and continue through the normal generic ABI below.
+  if (isa<ExistentialArchetypeType>(archetype) &&
+      llvm::any_of(archetype->getConformsTo(), [](ProtocolDecl *protocol) {
+        return protocol->isCOMInterface();
+      }))
+    return createCOMInterfaceTypeInfo(IGM);
 
   auto layout = archetype->getLayoutConstraint();
 

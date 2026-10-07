@@ -1072,6 +1072,10 @@ swift::swift_getObjCClassMetadata(const ClassMetadata *theClass) {
     return theClass;
   }
 
+  if (auto *prespecialized =
+          getLibPrespecializedObjCClassWrapperMetadata(theClass))
+    return prespecialized;
+
   return &ObjCClassWrappers.getOrInsert(theClass).first->Data;
 }
 
@@ -5874,19 +5878,11 @@ swift::swift_getExistentialTypeMetadata(
 
 ExistentialCacheEntry::ExistentialCacheEntry(Key key) {
   // Get the special protocol kind. Marker protocols are omitted before this
-  // runtime entry is called. A refined COM-interface chain may contain more
-  // than one descriptor, but every remaining protocol still has the same COM
-  // representation.
+  // runtime entry is called, and canonicalization removes inherited protocols.
+  // A COM existential therefore contains only its most-derived interface.
   auto special = SpecialProtocol::None;
   if (key.NumProtocols == 1)
     special = key.Protocols[0].getSpecialProtocol();
-  else if (key.NumProtocols > 1 &&
-           llvm::all_of(
-               make_range(key.Protocols, key.Protocols + key.NumProtocols),
-               [](ProtocolDescriptorRef protocol) {
-                 return protocol.getSpecialProtocol() == SpecialProtocol::COM;
-               }))
-    special = SpecialProtocol::COM;
 
   // Calculate the class constraint and number of witness tables for the
   // protocol set.
@@ -6251,15 +6247,6 @@ swift_getExtendedExistentialTypeMetadata(
 // StringMap because we don't need to actually copy the string.
 namespace {
 
-static const TypeContextDescriptor *
-getForeignTypeDescription(Metadata *metadata) {
-  if (auto foreignClass = dyn_cast<ForeignClassMetadata>(metadata))
-    return foreignClass->getDescription();
-  else if (auto foreignClass = dyn_cast<ForeignReferenceTypeMetadata>(metadata))
-    return foreignClass->getDescription();
-  return cast<ValueMetadata>(metadata)->getDescription();
-}
-
 class ForeignMetadataCacheEntry
   : public MetadataCacheEntryBase<ForeignMetadataCacheEntry, /*spurious*/ int> {
 
@@ -6381,10 +6368,31 @@ private:
 
 static Lazy<MetadataCache<ForeignMetadataCacheEntry, ForeignMetadataCacheTag>> ForeignMetadata;
 
+/// Is this foreign metadata complete without the cache having to say so?
+///
+/// Foreign metadata whose descriptor has no completion function is always
+/// complete. Foreign type metadata retrieved from the prespecializations
+/// library is never added to the cache, so we can't check the state variable in
+/// the cache. The prespecializations library only includes foreign metadata
+/// without a completion function, so this covers all of them.
+static bool
+isForeignMetadataCompleteByConstruction(const TypeContextDescriptor *description) {
+  return !description->getForeignMetadataInitialization().CompletionFunction;
+}
+
 MetadataResponse
 swift::swift_getForeignTypeMetadata(MetadataRequest request,
                                     ForeignTypeMetadata *candidate) {
   auto description = getForeignTypeDescription(candidate);
+
+  if (auto *prespecialized =
+          getLibPrespecializedForeignTypeMetadata(description)) {
+    assert(isForeignMetadataCompleteByConstruction(description) &&
+           "prespecialized foreign metadata should have no completion "
+           "function");
+    return MetadataResponse{prespecialized, MetadataState::Complete};
+  }
+
   ForeignMetadataCacheEntry::Key key{description};
   return ForeignMetadata->getOrInsert(key, request, candidate).second;
 }
@@ -8110,6 +8118,9 @@ MetadataResponse swift::swift_checkMetadataState(MetadataRequest request,
 
     MetadataResponse forForeignMetadata(const Metadata *metadata,
                             const TypeContextDescriptor *description) {
+      if (isForeignMetadataCompleteByConstruction(description))
+        return MetadataResponse{metadata, MetadataState::Complete};
+
       ForeignMetadataCacheEntry::Key key{description};
       return ForeignMetadata.get().await(key, Request);
     }
@@ -8465,6 +8476,9 @@ checkMetadataDependency(MetadataDependency dependency) {
     MetadataStateWithDependency
     forForeignMetadata(const Metadata *metadata,
                        const TypeContextDescriptor *description) {
+      if (isForeignMetadataCompleteByConstruction(description))
+        return {PrivateMetadataState::Complete, MetadataDependency()};
+
       ForeignMetadataCacheEntry::Key key{description};
       return ForeignMetadata.get().checkDependency(key, Requirement);
     }

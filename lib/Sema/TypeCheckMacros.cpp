@@ -17,13 +17,11 @@
 #include "TypeCheckMacros.h"
 #include "TypeCheckType.h"
 #include "TypeChecker.h"
-#include "swift/ABI/MetadataValues.h"
 #include "swift/AST/ASTBridging.h"
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/ASTMangler.h"
 #include "swift/AST/ASTNode.h"
 #include "swift/AST/ASTPrinter.h"
-#include "swift/AST/DiagnosticsFrontend.h"
 #include "swift/AST/DiagnosticsParse.h"
 #include "swift/AST/Expr.h"
 #include "swift/AST/FreestandingMacroExpansion.h"
@@ -50,7 +48,6 @@
 #include "swift/Sema/ConstraintSystem.h"
 #include "swift/Sema/IDETypeChecking.h"
 #include "swift/Subsystems.h"
-#include "llvm/Config/config.h"
 
 #define DEBUG_TYPE "macros"
 
@@ -620,7 +617,7 @@ static void diagnoseInvalidDecl(Decl *decl,
       isa<PrecedenceGroupDecl>(decl) ||
       isa<MacroDecl>(decl) ||
       isa<ExtensionDecl>(decl) ||
-      isa<UsingDecl>(decl)) {
+      isa<FileDefaultDecl>(decl)) {
     decl->diagnose(diag::invalid_decl_in_macro_expansion, decl);
     decl->setInvalid();
 

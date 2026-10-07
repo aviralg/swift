@@ -32,9 +32,7 @@
 #include "swift/Basic/CodeGenerationModel.h"
 #include "swift/Basic/Mangler.h"
 #include "swift/ClangImporter/ClangModule.h"
-#include "swift/Demangling/ManglingMacros.h"
 #include "swift/IRGen/Linking.h"
-#include "swift/Runtime/HeapObject.h"
 #include "swift/SIL/FormalLinkage.h"
 #include "swift/SIL/PrettyStackTrace.h"
 #include "swift/SIL/SILDebugScope.h"
@@ -54,8 +52,6 @@
 #include "llvm/IR/Value.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 
@@ -2745,7 +2741,7 @@ void IRGenModule::emitGlobalDecl(Decl *D) {
     // Expansion already visited as auxiliary decls.
     return;
 
-  case DeclKind::Using:
+  case DeclKind::FileDefault:
     return;
 
   case DeclKind::HiddenTypeLayoutInfo:
@@ -6000,7 +5996,7 @@ void IRGenModule::emitNestedTypeDecls(DeclRange members) {
     case DeclKind::Param:
     case DeclKind::Module:
     case DeclKind::PrecedenceGroup:
-    case DeclKind::Using:
+    case DeclKind::FileDefault:
       llvm_unreachable("decl not allowed in type context");
 
     case DeclKind::BuiltinTuple:

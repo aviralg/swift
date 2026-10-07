@@ -46,18 +46,15 @@
 #include "swift/AST/Stmt.h"
 #include "swift/AST/TypeCheckRequests.h"
 #include "swift/AST/TypeVisitor.h"
-#include "swift/AST/TypeWalker.h"
 #include "swift/AST/Types.h"
 #include "swift/Basic/Assertions.h"
 #include "swift/Basic/Defer.h"
 #include "swift/Basic/Feature.h"
 #include "swift/Basic/PrimitiveParsing.h"
 #include "swift/Basic/QuotedString.h"
-#include "swift/Basic/STLExtras.h"
 #include "swift/Basic/StringExtras.h"
 #include "swift/Basic/Unicode.h"
 #include "swift/ClangImporter/ClangImporterRequests.h"
-#include "swift/Config.h"
 #include "swift/Parse/Lexer.h"
 #include "swift/Strings.h"
 #include "clang/AST/ASTContext.h"
@@ -75,7 +72,6 @@
 #include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
-#include <queue>
 
 using namespace swift;
 
@@ -456,9 +452,9 @@ PrintOptions PrintOptions::printSwiftInterfaceFile(ModuleDecl *ModuleToPrint,
         }
       }
 
-      // The `using` declarations are private to the file at the moment
+      // The `default` declarations are private to the file at the moment
       // and shouldn't appear in swift interfaces.
-      if (isa<UsingDecl>(D))
+      if (isa<FileDefaultDecl>(D))
         return false;
 
       return ShouldPrintChecker::shouldPrint(D, options);
@@ -3487,8 +3483,8 @@ void PrintAST::visitImportDecl(ImportDecl *decl) {
                    [&] { Printer << "."; });
 }
 
-void PrintAST::visitUsingDecl(UsingDecl *decl) {
-  Printer.printIntroducerKeyword("using", Options, " ");
+void PrintAST::visitFileDefaultDecl(FileDefaultDecl *decl) {
+  Printer.printIntroducerKeyword("default", Options, " ");
   for (auto attr : decl->getSpecifiedAttributes()) {
     attr->print(Printer, Options, decl);
   }

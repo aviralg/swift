@@ -27,7 +27,6 @@
 #include "swift/AST/ConformanceLookup.h"
 #include "swift/AST/Decl.h"
 #include "swift/AST/DiagnosticEngine.h"
-#include "swift/AST/DiagnosticsFrontend.h"
 #include "swift/AST/DiagnosticsSema.h"
 #include "swift/AST/DistributedDecl.h"
 #include "swift/AST/ExistentialLayout.h"
@@ -63,8 +62,6 @@
 #include "swift/AST/SubstitutionMap.h"
 #include "swift/AST/SynthesizedFileUnit.h"
 #include "swift/AST/TypeCheckRequests.h"
-#include "swift/AST/TypeTransform.h"
-#include "swift/Basic/APIntMap.h"
 #include "swift/Basic/Assertions.h"
 #include "swift/Basic/BasicBridging.h"
 #include "swift/Basic/BlockList.h"
@@ -72,8 +69,6 @@
 #include "swift/Basic/Feature.h"
 #include "swift/Basic/SourceManager.h"
 #include "swift/Basic/Statistic.h"
-#include "swift/Basic/StringExtras.h"
-#include "swift/Bridging/ASTGen.h"
 #include "swift/ClangImporter/ClangModule.h"
 #include "swift/Frontend/ModuleInterfaceLoader.h"
 #include "swift/Serialization/SerializedModuleLoader.h"
@@ -90,13 +85,11 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/VersionTuple.h"
 #include "llvm/Support/VirtualOutputBackend.h"
 #include "llvm/Support/VirtualOutputBackends.h"
 #include <algorithm>
 #include <memory>
-#include <queue>
 
 #if !defined(_WIN32)
 #include <dlfcn.h>
@@ -329,6 +322,10 @@ struct ASTContext::Implementation {
   /** The declaration of MODULE.NAME. */ \
   DECL_CLASS *NAME##Decl = nullptr;
 #include "swift/AST/KnownSDKTypes.def"
+
+  /// The declaration of the CGFloat struct, which is not vended by a fixed
+  /// module and so cannot live in KnownSDKTypes.def.
+  StructDecl *CGFloatDecl = nullptr;
 
   /// The declaration of '+' function for two RangeReplaceableCollection.
   FuncDecl *PlusFunctionOnRangeReplaceableCollection = nullptr;
@@ -1908,6 +1905,49 @@ ConcreteDeclRef ASTContext::getRegexInitDecl(Type regexType) const {
   return ConcreteDeclRef(foundDecl, subs);
 }
 
+StructDecl *ASTContext::getCGFloatDecl() const {
+  if (getImpl().CGFloatDecl)
+    return getImpl().CGFloatDecl;
+
+  // CGFloat is declared by the CoreFoundation overlay on Darwin, and by
+  // Foundation on other platforms. Keep this list in sync with
+  // TypeBase::isCGFloat().
+  const Identifier moduleNames[] = {Id_CoreFoundation, Id_Foundation,
+                                    Id_CoreGraphics};
+
+  for (auto moduleName : moduleNames) {
+    ModuleDecl *M = getLoadedModule(moduleName);
+    if (!M)
+      continue;
+
+    // Note: lookupQualified() will search both the Swift overlay and the
+    // Clang module it imports. On platforms where CGFloat is a C typedef
+    // rather than a Swift struct, we skip the result and try the next
+    // module.
+    SmallVector<ValueDecl *, 2> decls;
+    M->lookupQualified(M, DeclNameRef(Id_CGFloat), SourceLoc(),
+                       NLFlags::OnlyTypes, decls);
+
+    for (auto *found : decls) {
+      auto *decl = dyn_cast<StructDecl>(found);
+      if (!decl || !decl->getDeclContext()->isModuleScopeContext())
+        continue;
+
+      getImpl().CGFloatDecl = decl;
+      return decl;
+    }
+  }
+
+  return nullptr;
+}
+
+Type ASTContext::getCGFloatType() const {
+  auto *decl = getCGFloatDecl();
+  if (!decl)
+    return Type();
+
+  return decl->getDeclaredInterfaceType();
+}
 
 static ConcreteDeclRef getCGFloatOrDoubleInitDecl(
     ASTContext &ctx, Type fromType, Type toType) {

@@ -34,14 +34,13 @@
 #include "swift/AST/TypeCheckRequests.h"
 #include "swift/AST/TypeVisitor.h"
 #include "swift/AST/USRGeneration.h"
-#include "swift/Basic/Assertions.h"
 #include "swift/Basic/Defer.h"
 #include "swift/Basic/QuotedString.h"
-#include "swift/Basic/STLExtras.h"
 #include "swift/Basic/SourceLoc.h"
 #include "swift/Basic/SourceManager.h"
 #include "swift/Basic/StringExtras.h"
 #include "clang/AST/Type.h"
+#include "clang/Basic/Module.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
@@ -49,7 +48,6 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/raw_ostream.h"
 #include <optional>
 
@@ -2252,13 +2250,13 @@ namespace {
       printFoot();
     }
 
-    void visitUsingDecl(UsingDecl *UD, Label label) {
-      printCommon(UD, "using_decl", label);
+    void visitFileDefaultDecl(FileDefaultDecl *FDD, Label label) {
+      printCommon(FDD, "file_default_decl", label);
 
-      ASTContext *Ctx = &UD->getASTContext();
-      DeclContext *DC = UD->getDeclContext();
+      ASTContext *Ctx = &FDD->getASTContext();
+      DeclContext *DC = FDD->getDeclContext();
       printList(
-          UD->getSpecifiedAttributes(),
+          FDD->getSpecifiedAttributes(),
           [&](auto *attr, Label label) { printRec(attr, Ctx, DC, label); },
           Label::optional("specified_attrs"));
       printFoot();

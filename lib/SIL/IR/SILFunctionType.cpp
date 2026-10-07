@@ -23,7 +23,6 @@
 
 #include "swift/AST/AnyFunctionRef.h"
 #include "swift/AST/Decl.h"
-#include "swift/AST/DiagnosticsSIL.h"
 #include "swift/AST/ForeignInfo.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/LocalArchetypeRequirementCollector.h"
@@ -31,7 +30,6 @@
 #include "swift/AST/Module.h"
 #include "swift/AST/ModuleLoader.h"
 #include "swift/AST/TypeCheckRequests.h"
-#include "swift/AST/TypeTransform.h"
 #include "swift/Basic/Assertions.h"
 #include "swift/ClangImporter/ClangImporter.h"
 #include "swift/SIL/SILModule.h"
@@ -43,10 +41,8 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/Analysis/DomainSpecific/CocoaConventions.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/SaveAndRestore.h"
 #include "llvm/Support/SipHash.h"
 
 using namespace swift;
@@ -2188,10 +2184,21 @@ private:
 
     CanType loweredType = substTL.getLoweredType().getASTType();
 
+    // A C++ method takes 'this' as a pointer, so self must be passed
+    // indirectly even when the Swift value type is loadable. An lvalue 'this'
+    // already lands there via isClangTypeMoreIndirectThanSubstType.
+    // A type imported as a class is itself the reference, so it stays direct.
+    bool isCxxMethodSelf =
+        Convs.getKind() == ConventionsKind::CXXMethod &&
+        Foreign.self.isInstance() &&
+        formalParamIndex == (int)Foreign.self.getSelfIndex() &&
+        !substType->hasReferenceSemantics();
+
     ParameterConvention convention;
     if (ownership == ValueOwnership::InOut) {
       convention = ParameterConvention::Indirect_Inout;
-    } else if (isFormallyPassedIndirectly(origType, substType, substTLConv)) {
+    } else if (isCxxMethodSelf ||
+               isFormallyPassedIndirectly(origType, substType, substTLConv)) {
       convention = Convs.getIndirect(ownership, forSelf, origParamIndex,
                                      origType, substTLConv);
       assert(isIndirectFormalParameter(convention));
@@ -4339,6 +4346,11 @@ public:
         TheDecl(decl), isMutating(isMutating), Ctx(ctx) {}
   ParameterConvention
   getIndirectSelfParameter(const AbstractionPattern &type) const override {
+    // The callee may move from '*this', but the caller still owns and destroys
+    // it: the same convention an rvalue-reference parameter gets from
+    // getIndirectCParameterConvention.
+    if (TheDecl->getRefQualifier() == clang::RefQualifierKind::RQ_RValue)
+      return ParameterConvention::Indirect_In_CXX;
     if (isMutating)
       return ParameterConvention::Indirect_Inout;
     return ParameterConvention::Indirect_In_Guaranteed;
@@ -4481,6 +4493,18 @@ static CanSILFunctionType getSILFunctionTypeForAbstractCFunction(
                             substType, extInfoBuilder,
                             DefaultBlockConventions(), ForeignInfo(), constant,
                             constant, std::nullopt, ProtocolConformanceRef());
+}
+
+/// If \p decl is a `@cxx @implementation` function that implements a C++
+/// method, return that method.
+static const clang::CXXMethodDecl *
+getImplementedCXXMethod(const ValueDecl *decl) {
+  if (!decl->getAttrs().hasAttribute<CxxDeclAttr>())
+    return nullptr;
+  const auto *interface = decl->getImplementedObjCDecl();
+  if (!interface)
+    return nullptr;
+  return dyn_cast_or_null<clang::CXXMethodDecl>(interface->getClangDecl());
 }
 
 /// Try to find a clang method declaration for the given function.
@@ -4856,6 +4880,12 @@ TypeConverter::getDeclRefRepresentation(SILDeclRef c) {
   if (c.isForeign) {
     if (!c.hasDecl())
       return SILFunctionTypeRepresentation::CFunctionPointer;
+
+    if (const auto *method = getImplementedCXXMethod(c.getDecl())) {
+      return method->isStatic()
+                 ? SILFunctionTypeRepresentation::CFunctionPointer
+                 : SILFunctionTypeRepresentation::CXXMethod;
+    }
 
     if (auto clangDecl = c.getDecl()->getClangDecl()) {
       if (auto method = dyn_cast<clang::CXXMethodDecl>(clangDecl)) {
@@ -5355,6 +5385,15 @@ getAbstractionPatternForConstant(TypeConverter &converter, ASTContext &ctx,
 
   const clang::Decl *clangDecl = bridgedFn->getClangDecl();
   if (!clangDecl) {
+    // A `@cxx @implementation` of a C++ method is bridged like the method it
+    // implements.
+    if (const auto *cxxMethod = getImplementedCXXMethod(bridgedFn)) {
+      assert(numParameterLists == 2 &&
+             "C++ method implementation not curried?");
+      return AbstractionPattern::getCurriedCXXMethod(
+          fnType, cxxMethod, bridgedFn->getImportAsMemberStatus());
+    }
+
     // If this function only has a C entrypoint, create a Clang type to
     // use when referencing it.
     if (bridgedFn->hasOnlyCEntryPoint()) {

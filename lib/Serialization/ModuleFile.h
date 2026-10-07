@@ -18,9 +18,9 @@
 #include "swift/AST/FileUnit.h"
 #include "swift/AST/Identifier.h"
 #include "swift/AST/LazyResolver.h"
-#include "swift/AST/LinkLibrary.h"
 #include "swift/AST/Module.h"
 #include "swift/AST/SILLayout.h"
+#include "swift/AST/SerializableHiddenTypeInfoRepresentation.h"
 #include "swift/Basic/BasicSourceInfo.h"
 #include "swift/Basic/LLVM.h"
 #include "swift/Serialization/Validation.h"
@@ -30,7 +30,6 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Bitstream/BitstreamReader.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 
@@ -304,6 +303,10 @@ private:
 
   /// Identifiers referenced by this module.
   MutableArrayRef<SerializedIdentifier> Identifiers;
+
+  MutableArrayRef<Serialized<Decl *>> HiddenTypeLayoutInfoDecls;
+  llvm::DenseMap<uint32_t, uint32_t> HiddenTypeFallbackMap;
+  std::vector<std::unique_ptr<AbstractTypeLayout>> DeserializedHiddenTypeLayouts;
 
   using SerializedDeclMembersTable =
       ModuleFileSharedCore::SerializedDeclMembersTable;
@@ -1075,6 +1078,13 @@ public:
   getDeclChecked(
     serialization::DeclID DID,
     llvm::function_ref<bool(DeclAttributes)> matchAttributes = nullptr);
+
+  llvm::Expected<HiddenTypeLayoutInfoDecl *>
+  getHiddenTypeLayoutInfoDecl(serialization::DeclID DID);
+
+  void consumeHiddenTypeXRefPathPieces(
+      llvm::BitstreamCursor &cursor, uint32_t pathLen,
+      SmallVectorImpl<HiddenTypeLayoutInfoDecl::XRefPathPiece> &pieces);
 
   /// Returns the decl context with the given ID, deserializing it if needed.
   DeclContext *getDeclContext(serialization::DeclContextID DID);

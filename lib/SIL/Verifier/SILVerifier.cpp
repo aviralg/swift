@@ -1738,7 +1738,9 @@ public:
     if (arg->getType().isTrivial(F) && argKind == OwnershipKind::None)
       return;
 
-    require(argKind == term->getForwardingOwnershipKind(),
+    require(argKind == term->getForwardingOwnershipKind() ||
+            (argKind == OwnershipKind::None &&
+             term->getForwardingOwnershipKind() == OwnershipKind::Owned),
             "OwnershipForwardingTermInst nontrivial result "
             "must have the same ownership");
   }
@@ -6970,6 +6972,13 @@ public:
 
       // If we do not have qualified ownership, do not check ownership.
       if (!F.hasOwnership()) {
+        return;
+      }
+      
+      // For arguments of trivial type, allow the internal ownership to vary
+      // if the function has ownership for trivial values enabled.
+      if (F.hasOwnershipForTrivialValues()
+          && F.getTypeProperties(bbarg->getType()).isTrivial()) {
         return;
       }
 

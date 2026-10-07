@@ -35,6 +35,7 @@
 #include "swift/ClangImporter/ClangImporter.h"
 #include "swift/Parse/Lexer.h"
 
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 
 using namespace swift;
@@ -806,6 +807,25 @@ bool swift::isRepresentableInLanguage(
       return false;
     }
     llvm_unreachable("bad kind");
+  }
+
+  // A C++ method receives `this` from its caller, so a `@cxx` implementation
+  // takes `self` with default ownership: `mutating` for a non-const method
+  // and nothing for a const one.
+  if (language == ForeignLanguage::Cxx) {
+    if (auto *FD = dyn_cast<FuncDecl>(AFD); FD && FD->isInstanceMember()) {
+      auto selfAccess = FD->getSelfAccessKind();
+      bool isConsuming = selfAccess == SelfAccessKind::Consuming ||
+                         selfAccess == SelfAccessKind::LegacyConsuming;
+      if (isConsuming || selfAccess == SelfAccessKind::Borrowing) {
+        softenIfAccessNote(AFD, Reason.getAttr(),
+                           AFD->diagnose(diag::cxx_self_ownership_unsupported,
+                                         AFD, isConsuming)
+                               .limitBehavior(behavior));
+        Reason.describe(AFD);
+        return false;
+      }
+    }
   }
 
   // As a special case, an initializer with a single, named parameter of type
@@ -3409,6 +3429,12 @@ public:
     assert(!D->hasClangNode() && "passed interface, not impl, to checker");
 
     if (isa<AbstractFunctionDecl>(D)) {
+      // An `@implementation` function whose foreign name resolves to several
+      // overloads with the same Swift signature has nothing definite to match
+      // against; the attribute checker diagnoses the ambiguity.
+      if (D->getAllImplementedObjCDecls().size() > 1)
+        return;
+
       addCandidate(D);
 
       // Unlike the members of an imported interface, which are discovered by
@@ -3624,23 +3650,17 @@ private:
     if (!restriction)
       return;
 
-    auto domainAndRange = restriction->getDomainAndRange(ctx);
-    auto domain = domainAndRange.getDomain();
+    auto domain = restriction->getDomainAndRange(ctx).getDomain();
 
-    auto emit = [&]() -> InFlightDiagnostic {
-      if (restriction->isUnavailable())
-        return diagnose(
-            ext, diag::objc_implementation_extension_unavailable, nominal,
-            restriction->shouldHideDomainNameInDiagnostics(), domain);
-
-      return diagnose(
-          ext, diag::objc_implementation_extension_only_available_in, nominal,
-          domain, domain.isVersioned(), domainAndRange.getRange());
-    };
-
-    emit().warnUntilLanguageModeIf(shouldDowngradeAvailabilityMismatchDiag(
-                                       domain, /*implIsLessAvailable=*/true),
-                                   LanguageMode::future);
+    // The extension implements the class rather than using it, so the
+    // `message:` from the `@available` attribute does not apply here.
+    llvm::SmallString<64> scratch;
+    diagnose(ext, diag::objc_implementation_extension_restricted, nominal,
+             restriction->getDiagnosticDescription(scratch, ctx,
+                                                   /*includeMessage=*/false))
+        .warnUntilLanguageModeIf(shouldDowngradeAvailabilityMismatchDiag(
+                                     domain, /*implIsLessAvailable=*/true),
+                                 LanguageMode::future);
 
     restriction->emitNoteForDecl(ext);
   }
@@ -4141,12 +4161,10 @@ private:
       return MatchOutcome::WrongExplicitObjCName;
 
     if (!hasSwiftNameMatch) {
-      // A `@cxx(...)` implementation may be named differently from the C++
-      // function it implements. The explicit C++ name is the authoritative
-      // match key, so a Swift-name difference is expected and fine.
-      bool cxxExplicitNameMatch =
-          explicitObjCName && cand->getAttrs().hasAttribute<CxxDeclAttr>();
-      if (!cxxExplicitNameMatch)
+      // A `@cxx` implementation is matched by its C++ name (given explicitly,
+      // or its Swift base name), so its Swift name may differ from that of the
+      // imported declaration, which the importer may have renamed.
+      if (!cand->getAttrs().hasAttribute<CxxDeclAttr>())
         return MatchOutcome::WrongSwiftName;
     }
 
@@ -4252,6 +4270,27 @@ private:
                                                  : 1;
       diagnose(cand, diag::cxx_func_defined, cand, clangFD->getName(), reason);
       return true;
+    }
+
+    if (const auto *method = dyn_cast<clang::CXXMethodDecl>(clangFD)) {
+      // TODO: Not supported yet.
+      if (method->isVirtual()) {
+        diagnose(cand, diag::cxx_virtual_unsupported, cand, clangFD->getName());
+        return true;
+      }
+
+      // The importer maps a const method to a non-mutating Swift method and a
+      // non-const one to a `mutating` method. The implementation must agree
+      // with the imported declaration on this as on the rest of the
+      // signature.
+      auto *reqFD = dyn_cast<FuncDecl>(req);
+      auto *candFD = dyn_cast<FuncDecl>(cand);
+      if (method->isInstance() && reqFD && candFD &&
+          reqFD->isMutating() != candFD->isMutating()) {
+        unsigned which = candFD->isMutating() ? 2 : method->isConst() ? 1 : 0;
+        diagnose(cand, diag::cxx_mutating_mismatch, cand, which, req);
+        return true;
+      }
     }
 
     // TODO: Not supported yet, ban C++ references for now.

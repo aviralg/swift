@@ -24,7 +24,6 @@
 #include "TypeCheckBitwise.h"
 #include "TypeCheckCOM.h"
 #include "TypeCheckConcurrency.h"
-#include "TypeCheckInvertible.h"
 #include "TypeCheckObjC.h"
 #include "TypeCheckType.h"
 #include "TypeChecker.h"
@@ -40,7 +39,6 @@
 #include "swift/AST/DiagnosticsParse.h"
 #include "swift/AST/ExistentialLayout.h"
 #include "swift/AST/Expr.h"
-#include "swift/AST/ForeignErrorConvention.h"
 #include "swift/AST/GenericEnvironment.h"
 #include "swift/AST/Initializer.h"
 #include "swift/AST/NameLookup.h"
@@ -56,12 +54,9 @@
 #include "swift/AST/Types.h"
 #include "swift/AST/YieldList.h"
 #include "swift/Basic/Assertions.h"
-#include "swift/Basic/Defer.h"
 #include "swift/Bridging/ASTGen.h"
 #include "swift/ClangImporter/ClangModule.h"
 #include "swift/Sema/IDETypeChecking.h"
-#include "swift/Serialization/SerializedModuleLoader.h"
-#include "swift/Strings.h"
 #include "swift/Subsystems.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -70,8 +65,6 @@
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
-#include "llvm/Support/Compiler.h"
-#include "llvm/Support/DJB.h"
 
 using namespace swift;
 
@@ -2134,16 +2127,6 @@ ResultTypeRequest::evaluate(Evaluator &evaluator, ValueDecl *decl) const {
         clangFn, decl->getDeclContext());
     if (returnType)
       return *returnType;
-    // Mark the imported Swift function as unavailable.
-    // That will ensure that the function will not be
-    // usable from Swift, even though it is imported.
-    if (!decl->isUnavailable()) {
-      StringRef unavailabilityMsgRef = "return type is unavailable in Swift";
-      auto ua = AvailableAttr::createUniversallyUnavailable(
-          ctx, unavailabilityMsgRef);
-      decl->addAttribute(ua);
-    }
-
     return ctx.getNeverType();
   }
 
@@ -2496,12 +2479,21 @@ InterfaceTypeRequest::evaluate(Evaluator &eval, ValueDecl *D) const {
   case DeclKind::Module:
   case DeclKind::OpaqueType:
   case DeclKind::MacroExpansion:
-  case DeclKind::Using:
+  case DeclKind::FileDefault:
     llvm_unreachable("should not get here");
     return Type();
 
-  case DeclKind::HiddenTypeLayoutInfo:
-    llvm_unreachable("hidden layout declaration types are not implemented yet");
+  case DeclKind::HiddenTypeLayoutInfo: {
+    auto *hiddenDecl = cast<HiddenTypeLayoutInfoDecl>(D);
+    CanType parent;
+    if (auto *parentDecl = hiddenDecl->ParentDecl)
+      parent = parentDecl->getDeclaredInterfaceType()->getCanonicalType();
+
+    auto hiddenType = HiddenType::get(
+        Context, hiddenDecl->MangledName, hiddenDecl->getModuleContext(),
+        hiddenDecl, parent);
+    return MetatypeType::get(hiddenType, Context);
+  }
 
   case DeclKind::GenericTypeParam: {
     auto *paramDecl = cast<GenericTypeParamDecl>(D);
